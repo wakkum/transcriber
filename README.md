@@ -4,9 +4,21 @@ Audio and video to text, on your own computer. Drop a file, get a transcript wit
 
 Built from the transcription part of [Yarnit](https://github.com/wakkum/yarnit).
 
+## Download
+
+Get the app from the [latest release](https://github.com/wakkum/transcriber/releases/latest):
+
+| System | File |
+| --- | --- |
+| Mac, Apple Silicon (M1 or newer) | [Transcriber-0.1.0-mac-arm64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.1.0/Transcriber-0.1.0-mac-arm64.dmg) |
+| Mac, Intel | [Transcriber-0.1.0-mac-x64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.1.0/Transcriber-0.1.0-mac-x64.dmg) |
+| Windows (64-bit) | [Transcriber-0.1.0-win-x64.zip](https://github.com/wakkum/transcriber/releases/download/v0.1.0/Transcriber-0.1.0-win-x64.zip) |
+
+About 205 MB for Mac and 235 MB for Windows, models included. The apps are not signed by Apple or Microsoft, so see below for the first open.
+
 ## Use it
 
-**The app (no npm, no browser address).** Open the file for your system from `release/`:
+**The app (no npm, no browser address).** Open the file you downloaded (or the one in `release/` if you built it yourself):
 
 - **Mac:** `Transcriber-<version>-mac-arm64.dmg` (Apple Silicon: M1 or newer) or `...-mac-x64.dmg` (Intel). Drag Transcriber to Applications. It is not signed by Apple, so the first time: right-click the app, choose Open, then Open again.
 - **Windows:** unzip `Transcriber-<version>-win-x64.zip` and double-click `Transcriber.exe`. Windows may show "Windows protected your PC": choose More info, then Run anyway.
