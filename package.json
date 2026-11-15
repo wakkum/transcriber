@@ -1,0 +1,90 @@
+{
+  "name": "transcriber",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "start": "vite build && vite preview --open",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "check": "tsc -b && oxlint && vitest run",
+    "models": "node scripts/fetch-models.mjs",
+    "app": "npm run models && vite build && electron .",
+    "pack:mac": "npm run models && vite build && electron-builder --mac --arm64 --x64",
+    "pack:win": "npm run models && vite build && electron-builder --win --x64"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@huggingface/transformers": "^4.3.0",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0",
+    "mediabunny": "^1.61.1",
+    "oxlint": "^1.81.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^4.1.11"
+  },
+  "main": "electron/main.cjs",
+  "description": "Audio and video to text, on your own computer",
+  "author": "Transcriber",
+  "build": {
+    "appId": "local.transcriber.app",
+    "productName": "Transcriber",
+    "files": [
+      "dist/**",
+      "models/**",
+      "electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "asar": true,
+    "mac": {
+      "target": [
+        {
+          "target": "dmg"
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "dmg": {
+      "title": "Transcriber"
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false,
+      "enableCookieEncryption": true
+    }
+  }
+}
