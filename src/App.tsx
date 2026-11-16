@@ -7,6 +7,7 @@ import { LANGUAGES, modelFor, QUALITIES, type Quality } from './engine/models';
 import { canWritePdf, pdfFile, type Measure } from './engine/pdf';
 import { addSpeaker, assignTo, fromIdentification, mergeSpeakers, namesOf, renameSpeaker, usedSpeakers, type Speaker } from './engine/speakers';
 import { baseName, clock, isRtl, lineGroups, paragraphs, transcriptTxt, type Para, type Word } from './engine/transcript';
+import { newerVersion, RELEASES_PAGE } from './engine/update';
 import { SelectionBar, Transcript, type MenuState } from './ui/Transcript';
 import type { DiarizeControl, DiarizeMessage, DiarizeRequest } from './workers/diarize.worker';
 import type { TranscribeControl, TranscribeMessage, TranscribeRequest } from './workers/transcribe.worker';
@@ -14,10 +15,13 @@ import type { TranscribeControl, TranscribeMessage, TranscribeRequest } from './
 type Phase = 'idle' | 'decoding' | 'model' | 'transcribing' | 'speakers' | 'done' | 'error';
 /** How many people to look for: found automatically, a number, or not at all. */
 type SpeakerSetting = 'auto' | 'off' | '2' | '3' | '4' | '5' | '6' | '7' | '8';
-type Settings = { language: string; quality: Quality; device: 'wasm' | 'webgpu'; speakers: SpeakerSetting };
+type Settings = { language: string; quality: Quality; device: 'wasm' | 'webgpu'; speakers: SpeakerSetting; updates: boolean };
 type Snapshot = { words: Word[]; speakers: Speaker[] };
 
-const DEFAULTS: Settings = { language: 'english', quality: 'balanced', device: 'wasm', speakers: 'auto' };
+const DEFAULTS: Settings = { language: 'english', quality: 'balanced', device: 'wasm', speakers: 'auto', updates: true };
+declare const __APP_VERSION__: string;
+/** Only the desktop app is something to update: a browser always loads the current build. */
+const IS_APP = location.protocol === 'app:';
 const SETTINGS_KEY = 'transcriber.settings';
 const VIDEO = /\.(mp4|m4v|mov|webm|mkv|avi|wmv|mpg|mpeg|3gp|ts|mts)$/i;
 const ACCEPT = 'audio/*,video/*,.mkv,.mts,.ts';
@@ -92,6 +96,13 @@ export default function App() {
   const [over, setOver] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [notice, setNotice] = useState('');
+  const [update, setUpdate] = useState<string | null>(null);
+  useEffect(() => {
+    if (!IS_APP || !settings.updates) return setUpdate(null);
+    const abort = new AbortController();
+    void newerVersion(__APP_VERSION__, abort.signal).then((v) => !abort.signal.aborted && setUpdate(v));
+    return () => abort.abort();
+  }, [settings.updates]);
   const job = useRef<Job | null>(null);
   const mono = useRef<Float32Array | null>(null);
   const media = useRef<HTMLMediaElement | null>(null);
@@ -465,6 +476,18 @@ export default function App() {
         }}
       />
 
+      {update && (
+        <p className="update">
+          Version {update} is available.{' '}
+          <a href={RELEASES_PAGE} target="_blank" rel="noreferrer">
+            Download it
+          </a>
+          <button onClick={() => setUpdate(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </p>
+      )}
+
       {phase === 'idle' || (phase === 'error' && !words.length) ? (
         <main className="empty">
           <div className={`drop${over ? ' over' : ''}`}>
@@ -520,6 +543,12 @@ export default function App() {
                 </select>
               </label>
             </div>
+            {IS_APP && (
+              <label className="updates">
+                <input type="checkbox" checked={settings.updates} onChange={(e) => setSettings({ updates: e.target.checked })} />
+                Check for new versions (asks GitHub once at launch, sends nothing else)
+              </label>
+            )}
           </div>
         </main>
       ) : (

@@ -141,3 +141,7 @@ button.link { border: 0; background: transparent; padding: 0; color: var(--accen
   .line { gap: 8px; }
   .export .grow { display: none; }
 }
+
+.update { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; padding: 8px 12px; background: var(--soft); font-size: 14px; }
+.update button { border: 0; background: none; cursor: pointer; font-size: 18px; line-height: 1; color: var(--muted); padding: 0 4px; }
+.updates { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 16px; font-size: 13px; color: var(--muted); }

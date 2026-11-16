@@ -10,9 +10,9 @@ Get the app from the [latest release](https://github.com/wakkum/transcriber/rele
 
 | System | File |
 | --- | --- |
-| Mac, Apple Silicon (M1 or newer) | [Transcriber-0.1.1-mac-arm64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.1.1/Transcriber-0.1.1-mac-arm64.dmg) |
-| Mac, Intel | [Transcriber-0.1.1-mac-x64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.1.1/Transcriber-0.1.1-mac-x64.dmg) |
-| Windows (64-bit) | [Transcriber-0.1.1-win-x64.zip](https://github.com/wakkum/transcriber/releases/download/v0.1.1/Transcriber-0.1.1-win-x64.zip) |
+| Mac, Apple Silicon (M1 or newer) | [Transcriber-0.1.2-mac-arm64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.1.2/Transcriber-0.1.2-mac-arm64.dmg) |
+| Mac, Intel | [Transcriber-0.1.2-mac-x64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.1.2/Transcriber-0.1.2-mac-x64.dmg) |
+| Windows (64-bit) | [Transcriber-0.1.2-win-x64.zip](https://github.com/wakkum/transcriber/releases/download/v0.1.2/Transcriber-0.1.2-win-x64.zip) |
 
 About 205 MB for Mac and 235 MB for Windows, models included. The apps are not signed by Apple or Microsoft, so see below for the first open.
 
@@ -67,6 +67,7 @@ Dependencies: Transformers.js (Apache-2.0), Mediabunny (MPL-2.0), React (MIT), E
 
 - The app runs sandboxed with a strict Content Security Policy (`electron/csp.cjs`). It serves its own files from a private `app://` address, denies all device permissions and blocks navigation away from itself.
 - Packaged apps refuse debugging switches, and the Electron fuses disable running it as a plain Node process.
+- The desktop app asks GitHub once at launch whether a newer release exists, and shows a notice with a download link if so. Only that version check is sent, nothing about you or your files. It can be turned off on the start screen, and it fails silently when offline.
 - Models are fetched by exact Hugging Face commit (`REVISIONS` in `src/engine/models.ts`), not from a branch that can change. Even `config.json` is rewritten to the pinned commit in `src/workers/ort.ts`.
 - Stop finishes the piece being transcribed and keeps the words found so far, which can still be exported. Closing the window mid-job asks first.
 - The Mac apps are ad-hoc signed, so the first open needs right-click, then Open. Packaged sizes: about 205 MB per Mac disk image, 235 MB for the Windows zip, models included.

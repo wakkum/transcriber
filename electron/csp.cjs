@@ -1,5 +1,5 @@
-// The content security policy for the built app: only its own files, and Hugging Face for the one-time
-// model download. Shared by the page (vite.config.ts adds it to index.html) and the desktop app
+// The content security policy for the built app: only its own files, Hugging Face for the one-time
+// model download, and GitHub for the new-version check. Shared by the page (vite.config.ts adds it to index.html) and the desktop app
 // (main.cjs sends it as a header, which also covers the workers).
 module.exports = [
   "default-src 'self'",
@@ -8,7 +8,7 @@ module.exports = [
   "img-src 'self' data: blob:",
   "media-src 'self' blob:", // the player
   "font-src 'self'",
-  "connect-src 'self' blob: data: https://huggingface.co https://*.huggingface.co https://*.hf.co",
+  "connect-src 'self' blob: data: https://huggingface.co https://*.huggingface.co https://*.hf.co https://api.github.com", // GitHub: the new-version check
   "worker-src 'self' blob:",
   "frame-src 'self' about: blob:", // the print frame
   "object-src 'none'",
