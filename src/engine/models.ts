@@ -67,3 +67,6 @@ export function modelFor(language: string, quality: Quality): { id: string; size
   if (language === 'english') return { id: `Xenova/whisper-${size}.en`, size: SIZES[size] };
   return { id: `Xenova/whisper-${size}`, size: SIZES[size], language };
 }
+
+/** The speech model that ships inside the desktop app (with the speaker models): see scripts/fetch-models.mjs. */
+export const BUNDLED_SPEECH_MODEL = 'Xenova/whisper-base.en';

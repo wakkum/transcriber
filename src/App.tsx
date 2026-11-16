@@ -3,7 +3,7 @@ import { decodeToMono, WHISPER_SAMPLE_RATE } from './audio/decode';
 import { assignWords, smoothSpeakers } from './engine/diarize';
 import { docxFile } from './engine/docx';
 import { printHtml } from './engine/html';
-import { LANGUAGES, modelFor, QUALITIES, type Quality } from './engine/models';
+import { BUNDLED_SPEECH_MODEL, LANGUAGES, modelFor, QUALITIES, type Quality } from './engine/models';
 import { canWritePdf, pdfFile, type Measure } from './engine/pdf';
 import { addSpeaker, assignTo, fromIdentification, mergeSpeakers, namesOf, renameSpeaker, usedSpeakers, type Speaker } from './engine/speakers';
 import { baseName, clock, isRtl, lineGroups, paragraphs, transcriptTxt, type Para, type Word } from './engine/transcript';
@@ -109,6 +109,8 @@ export default function App() {
   const input = useRef<HTMLInputElement>(null);
 
   const model = modelFor(settings.language, settings.quality);
+  /** In the desktop app this speech model and the speaker models are inside the app: nothing to download. */
+  const included = (id: string) => IS_APP && id === BUNDLED_SPEECH_MODEL;
   const busy = phase === 'decoding' || phase === 'model' || phase === 'transcribing' || phase === 'speakers';
   const isVideo = !!file && (file.type.startsWith('video/') || VIDEO.test(file.name));
   const paras = useMemo(() => paragraphs(words), [words]);
@@ -424,11 +426,15 @@ export default function App() {
     phase === 'decoding'
       ? 'Reading the sound'
       : phase === 'model'
-        ? `Loading the speech model (${model.size}, once)`
+        ? included(model.id)
+          ? 'Loading the speech model'
+          : `Loading the speech model (${model.size}, once)`
         : phase === 'transcribing'
           ? `Transcribing on the ${device}`
           : stage === 'download'
-            ? `Loading the speaker models (${SPEAKER_MODELS}, once)`
+            ? IS_APP
+              ? 'Loading the speaker models'
+              : `Loading the speaker models (${SPEAKER_MODELS}, once)`
             : 'Identifying speakers';
 
   // the speaker of every selected word, if all the same (ticked in the bar)
@@ -493,8 +499,12 @@ export default function App() {
           <div className={`drop${over ? ' over' : ''}`}>
             <h1>Drop an audio or video file</h1>
             <p>
-              MP3, WAV, M4A, MP4, MOV, WebM and more. Everything stays on this computer: nothing is uploaded. The first time, the speech model ({model.size}) and the speaker models (
-              {SPEAKER_MODELS}) download once and are then kept.
+              MP3, WAV, M4A, MP4, MOV, WebM and more. Everything stays on this computer: nothing is uploaded.{' '}
+              {included(model.id)
+                ? 'The speech and speaker models for this choice are inside the app, so it works with the internet off.'
+                : IS_APP
+                  ? `The first time, this speech model (${model.size}) downloads once and is then kept. The speaker models are inside the app.`
+                  : `The first time, the speech model (${model.size}) and the speaker models (${SPEAKER_MODELS}) download once and are then kept.`}
             </p>
             <button className="primary" onClick={() => input.current?.click()}>
               Choose a file
@@ -516,7 +526,7 @@ export default function App() {
                 <select value={settings.quality} onChange={(e) => setSettings({ quality: e.target.value as Quality })}>
                   {QUALITIES.map((q) => (
                     <option key={q.id} value={q.id}>
-                      {q.label} ({modelFor(settings.language, q.id).size})
+                      {q.label} ({included(modelFor(settings.language, q.id).id) ? 'included' : modelFor(settings.language, q.id).size})
                     </option>
                   ))}
                 </select>
