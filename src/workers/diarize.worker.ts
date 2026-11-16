@@ -61,29 +61,37 @@ self.onmessage = async (e: MessageEvent<DiarizeRequest | DiarizeControl>) => {
     for (let w = 0; w < windows.length; w++) {
       if (stopRequested) return post({ type: 'stopped', audio });
       const [a, b] = [Math.floor(windows[w].start * SR), Math.min(audio.length, Math.ceil(windows[w].end * SR))];
-      const chunk = audio.subarray(a, b);
-      const { logits } = await segModel(await segProc(chunk));
-      const masks = frameMasks((logits.tolist() as number[][][])[0]);
-      const frameSeconds = chunk.length / SR / masks.length;
-      runs.push([0, 1, 2].map((s) => speakerRuns(masks, s, frameSeconds, windows[w].start)));
+      try {
+        // the segmentation model fails on empty or very short input (a word timed at the very end of the
+        // file): pad to 1 s of silence
+        const real = audio.subarray(a, b);
+        const chunk = real.length >= SR ? real : Float32Array.from({ length: SR }, (_, i) => real[i] ?? 0);
+        const { logits } = await segModel(await segProc(chunk));
+        const masks = frameMasks((logits.tolist() as number[][][])[0]);
+        const frameSeconds = chunk.length / SR / masks.length;
+        runs.push([0, 1, 2].map((s) => speakerRuns(masks, s, frameSeconds, windows[w].start)));
 
-      for (let s = 0; s < 3; s++) {
-        const frames = embeddingFrames(masks, s, frameSeconds);
-        if (!frames) continue;
-        const per = chunk.length / masks.length;
-        const parts = frames.map((f) => chunk.subarray(Math.floor(f * per), Math.floor((f + 1) * per)));
-        const own = new Float32Array(Math.min(MAX_EMBED_SECONDS * SR, parts.reduce((n, p) => n + p.length, 0)));
-        let at = 0;
-        for (const p of parts) {
-          if (at >= own.length) break;
-          own.set(p.subarray(0, own.length - at), at);
-          at += p.length;
+        for (let s = 0; s < 3; s++) {
+          const frames = embeddingFrames(masks, s, frameSeconds);
+          if (!frames) continue;
+          const per = chunk.length / masks.length;
+          const parts = frames.map((f) => chunk.subarray(Math.floor(f * per), Math.floor((f + 1) * per)));
+          const own = new Float32Array(Math.min(MAX_EMBED_SECONDS * SR, parts.reduce((n, p) => n + p.length, 0)));
+          let at = 0;
+          for (const p of parts) {
+            if (at >= own.length) break;
+            own.set(p.subarray(0, own.length - at), at);
+            at += p.length;
+          }
+          const out = (await embModel(await embProc(own))) as Record<string, { data: Float32Array }>;
+          const t = out.embeddings ?? out.last_hidden_state ?? Object.values(out)[0];
+          vectors.push(Array.from(t.data));
+          weights.push(own.length / SR);
+          owner.push({ window: w, local: s });
         }
-        const out = (await embModel(await embProc(own))) as Record<string, { data: Float32Array }>;
-        const t = out.embeddings ?? out.last_hidden_state ?? Object.values(out)[0];
-        vectors.push(Array.from(t.data));
-        weights.push(own.length / SR);
-        owner.push({ window: w, local: s });
+      } catch {
+        // one bad stretch must not lose the speakers for the whole recording: leave it unlabelled
+        runs[w] ??= [[], [], []];
       }
       post({ type: 'progress', progress: (w + 1) / windows.length });
     }

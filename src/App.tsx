@@ -227,7 +227,8 @@ export default function App() {
       }
       if (m.type === 'error') {
         if (m.audio) mono.current = m.audio;
-        fail(`Transcription failed: ${m.message}`);
+        // "Failed to fetch" is the browser's name for a download that could not start or was cut off
+        fail(/failed to fetch|networkerror|load failed/i.test(m.message) ? 'The speech model could not be downloaded. Check the internet connection and try again: the parts already downloaded are kept.' : `Transcription failed: ${m.message}`);
       }
     };
     const req: TranscribeRequest = { audio: samples, model: model.id, device: settings.device, ...(model.language ? { language: model.language } : {}) };

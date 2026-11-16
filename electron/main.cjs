@@ -29,7 +29,9 @@ function serve() {
       return new Response('Bad request', { status: 400 }); // a malformed %-escape
     }
     if (!file.startsWith(base + path.sep)) return new Response('Not found', { status: 404 });
-    return net.fetch(pathToFileURL(file).toString()).then((res) => {
+    // a missing file is a 404 (the page then falls back to downloading a model), never a failed request
+    return net.fetch(pathToFileURL(file).toString()).catch(() => null).then((res) => {
+      if (!res || res.status === 404) return new Response('Not found', { status: 404 });
       // the policy as a header too: unlike the page's tag it also applies to the workers
       const headers = new Headers(res.headers);
       headers.set('Content-Security-Policy', csp);
