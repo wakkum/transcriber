@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { timecode, type Para, type Word } from '../engine/transcript';
 import type { Speaker } from '../engine/speakers';
-import { Dot, SpeakerList, SpeakerMenu } from './SpeakerMenu';
+import { Dot, SpeakerMenu } from './SpeakerMenu';
 
 export type MenuState = { key: string; rename?: boolean } | null;
 
@@ -15,6 +15,9 @@ type Props = {
   showSpeakers: boolean;
   now: number;
   selected: ReadonlySet<string>;
+  /** Words matching the search, and the ones of the match being looked at. */
+  found: ReadonlySet<string>;
+  foundNow: ReadonlySet<string>;
   editing: string | null;
   menu: MenuState;
   onSeek: (t: number) => void;
@@ -58,9 +61,12 @@ export function Transcript(p: Props) {
           <section key={key} className="para">
             {p.showSpeakers && speaker && (
               <div className="whowrap">
-                <button className="whobtn" onClick={() => p.onMenu(p.menu?.key === key ? null : { key })} aria-expanded={p.menu?.key === key}>
+                <button className="whobtn" title="Change who spoke this paragraph, or rename" onClick={() => p.onMenu(p.menu?.key === key ? null : { key })} aria-expanded={p.menu?.key === key}>
                   <Dot speakers={p.speakers} id={speaker.id} />
                   {speaker.name}
+                  <span className="caret" aria-hidden>
+                    ▾
+                  </span>
                 </button>
                 {p.menu?.key === key && (
                   <SpeakerMenu
@@ -87,7 +93,9 @@ export function Transcript(p: Props) {
                     ) : (
                       <span
                         key={w.id}
-                        className={`w${p.selected.has(w.id) ? ' sel' : ''}`}
+                        data-w={w.id}
+                        title={w.doubt ? 'Worth checking against the audio' : w.overlap ? 'Spoken over by someone else' : undefined}
+                        className={`w${w.doubt ? ' doubt' : ''}${w.overlap ? ' ov' : ''}${p.found.has(w.id) ? (p.foundNow.has(w.id) ? ' hit now' : ' hit') : ''}${p.selected.has(w.id) ? ' sel' : ''}`}
                         onMouseDown={(e) => {
                           if (e.button !== 0 || (e.target as HTMLElement).closest('input')) return;
                           if (e.shiftKey && anchor.current) {
@@ -108,6 +116,12 @@ export function Transcript(p: Props) {
                           p.onClear();
                           p.onSeek(w.start);
                         }}
+                        onContextMenu={(e) => {
+                          // right-click picks this one word, to give it away or carry on from it
+                          e.preventDefault();
+                          anchor.current = w.id;
+                          p.onSelect(w.id, w.id);
+                        }}
                         onDoubleClick={() => p.onEdit(w.id)}
                       >
                         {w.text}{' '}
@@ -124,30 +138,86 @@ export function Transcript(p: Props) {
   );
 }
 
-/** The bar for selected words: give them to a speaker (new or existing), or clear the selection. */
-export function SelectionBar({ count, speakers, current, onGive, onClear }: { count: number; speakers: Speaker[]; current: string | null; onGive: (to: string | 'new') => void; onClear: () => void }) {
-  const [open, setOpen] = useState(false);
+/** The bar for selected words: give them to a speaker, retype or delete them, widen to the sentence, or clear. */
+export function SelectionBar({ count, speakers, current, text, onGive, onRetype, onDelete, onSentence, onTurn, onClear }: {
+  count: number;
+  speakers: Speaker[];
+  current: string | null;
+  /** The selected words as text, for the edit box. */
+  text: string;
+  onGive: (to: string | 'new') => void;
+  onRetype: (text: string) => void;
+  onDelete: () => void;
+  onSentence: () => void;
+  onTurn: () => void;
+  onClear: () => void;
+}) {
+  const [open, setOpen] = useState<'edit' | null>(null);
+  const [draft, setDraft] = useState('');
+  const save = () => {
+    setOpen(null);
+    onRetype(draft);
+  };
   return (
     <div className="selbar" role="toolbar" aria-label="Selected words">
       <span>{count === 1 ? '1 word' : `${count} words`}</span>
-      <div className="whowrap">
-        <button onClick={() => setOpen(!open)} aria-expanded={open}>
-          Speaker ▾
+      <span className="muted small">Speaker:</span>
+      {speakers.map((sp) => (
+        <button key={sp.id} className={`chip${current === sp.id ? ' on' : ''}`} onClick={() => onGive(sp.id)} title={`Give these words to ${sp.name}`}>
+          <Dot speakers={speakers} id={sp.id} />
+          {sp.name}
         </button>
-        {open && (
-          <div className="pop up">
-            <div className="pop-label">Give these words to</div>
-            <SpeakerList
-              speakers={speakers}
-              checked={current}
-              onPick={(to) => {
-                setOpen(false);
-                onGive(to);
+      ))}
+      <button className="chip" onClick={() => onGive('new')} title="Give these words to a new speaker">
+        + New
+      </button>
+      <div className="whowrap">
+        <button
+          onClick={() => {
+            setDraft(text);
+            setOpen(open === 'edit' ? null : 'edit');
+          }}
+          aria-expanded={open === 'edit'}
+        >
+          Edit text
+        </button>
+        {open === 'edit' && (
+          <div className="pop up wide" role="dialog" aria-label="Edit the selected words">
+            <label className="pop-label" htmlFor="seltext">
+              Replace these words with
+            </label>
+            <textarea
+              id="seltext"
+              autoFocus
+              rows={4}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) save();
+                if (e.key === 'Escape') setOpen(null);
               }}
             />
+            <div className="pop-row">
+              <button className="primary" onClick={save}>
+                Save
+              </button>
+              <button className="ghost" onClick={() => setOpen(null)}>
+                Cancel
+              </button>
+              <span className="muted small">Ctrl or Cmd + Enter saves. Empty text deletes them.</span>
+            </div>
           </div>
         )}
       </div>
+      <button onClick={onSentence} title="Widen the selection to whole sentences">
+        Whole sentence
+      </button>
+      <button onClick={onTurn} title="Carry the selection on to where the speaker changes">
+        To end of turn
+      </button>
+      <button className="danger" onClick={onDelete} title="Delete the selected words (Delete key)">
+        Delete
+      </button>
       <button className="ghost" onClick={onClear}>
         Clear
       </button>

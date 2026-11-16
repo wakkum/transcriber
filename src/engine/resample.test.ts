@@ -68,3 +68,24 @@ describe('findHoles', () => {
     expect(findHoles([])).toEqual([]);
   });
 });
+
+describe('MonoResampler pieces', () => {
+  const ramp = (n: number) => Float32Array.from({ length: n }, (_, i) => i);
+  it('hands out the first samples and keeps the rest in order', () => {
+    const r = new MonoResampler(16_000, 16_000);
+    r.push([ramp(5)]);
+    r.push([Float32Array.from({ length: 5 }, (_, i) => 5 + i)]);
+    expect([...r.take(3)]).toEqual([0, 1, 2]);
+    expect(r.size).toBe(7);
+    expect([...r.take(6)]).toEqual([3, 4, 5, 6, 7, 8]);
+    expect([...r.finish()]).toEqual([9]);
+  });
+  it('shows the last samples without removing them', () => {
+    const r = new MonoResampler(16_000, 16_000);
+    r.push([ramp(4)]);
+    r.push([Float32Array.from({ length: 4 }, (_, i) => 4 + i)]);
+    expect([...r.tail(5)]).toEqual([3, 4, 5, 6, 7]);
+    expect(r.size).toBe(8);
+    expect([...r.tail(100)]).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  });
+});

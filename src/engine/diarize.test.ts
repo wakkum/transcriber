@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assignWords, embeddingFrames, firstToTalkIsZero, frameMasks, planWindows, smoothSpeakers, speakerRuns, type SpeakerSegment } from './diarize';
+import { assignWords, DEFAULT_SEPARATION, embeddingFrames, firstToTalkIsZero, frameMasks, joinVoices, labelVoices, noVoices, overlapFlags, overlapSpans, planWindows, SEPARATION_LEVELS, shiftVoices, smoothSpeakers, speakerRuns, type SpeakerSegment } from './diarize';
 
 /** n words of 0.4 s each, `gap` apart, from `at`. */
 const run = (n: number, at = 0, gap = 0.1) => Array.from({ length: n }, (_, i) => ({ start: at + i * (0.4 + gap), end: at + i * (0.4 + gap) + 0.4 }));
@@ -86,5 +86,46 @@ describe('smoothSpeakers', () => {
     expect(smoothSpeakers([0, 0, 1, 0, 0, 0], words)).toEqual([0, 0, 0, 0, 0, 0]);
     expect(smoothSpeakers([0, 0, 1, 1, 0, 0], words)).toEqual([0, 0, 1, 1, 0, 0]);
     expect(smoothSpeakers([0, 1, 0], [{ start: 0, end: 1 }, { start: 1, end: 3 }, { start: 3, end: 4 }])).toEqual([0, 1, 0]);
+  });
+});
+
+describe('overlap', () => {
+  it('finds stretches where two or more talk, ignoring blips', () => {
+    // frames of 0.1 s: 0 = silence, 1 = A, 3 = A and B talking, 2 = B
+    const masks = [1, 1, 3, 3, 3, 2, 2, 1, 3, 1];
+    expect(overlapSpans(masks, 0.1, 10)).toEqual([{ start: 10.2, end: 10.5 }]);
+  });
+  it('flags words that are mostly spoken over', () => {
+    const words = [{ start: 0, end: 1 }, { start: 1, end: 2 }, { start: 2, end: 3 }];
+    expect(overlapFlags(words, [{ start: 1.4, end: 3 }])).toEqual([false, true, true]);
+    expect(overlapFlags(words, [])).toEqual([false, false, false]);
+  });
+});
+
+describe('voices', () => {
+  const near = (x: number) => [1, x, 0, 0];
+  const voices = {
+    vectors: [near(0), near(0.05), near(1.2), near(1.25)],
+    weights: [5, 5, 5, 5],
+    runs: [[{ start: 0, end: 2 }], [{ start: 4, end: 6 }], [{ start: 2, end: 4 }], [{ start: 6, end: 8 }]],
+    overlaps: [],
+  };
+  it('groups voices into people, the first to talk being 0', () => {
+    const r = labelVoices(voices, { count: 2 });
+    expect(r.people).toBe(2);
+    expect(r.segments.map((s) => s.speaker)).toEqual([0, 1, 0, 1]);
+  });
+  it('a looser level merges what a stricter one keeps apart', () => {
+    const strict = labelVoices(voices, { threshold: SEPARATION_LEVELS[0] });
+    const loose = labelVoices(voices, { threshold: SEPARATION_LEVELS.at(-1) });
+    expect(strict.people).toBeGreaterThanOrEqual(loose.people);
+    expect(SEPARATION_LEVELS[DEFAULT_SEPARATION]).toBeGreaterThan(SEPARATION_LEVELS[0]);
+  });
+  it('shifts and joins the voices of separate parts', () => {
+    const a = shiftVoices(voices, 100);
+    expect(a.runs[0][0]).toEqual({ start: 100, end: 102 });
+    const joined = joinVoices([voices, a]);
+    expect(joined.vectors).toHaveLength(8);
+    expect(joinVoices([noVoices(), noVoices()]).vectors).toEqual([]);
   });
 });

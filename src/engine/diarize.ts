@@ -4,6 +4,8 @@
 // own audio gets a voice embedding; clustering (cluster.ts) turns local speakers into people; and
 // every word then takes the person talking over it.
 
+import { cluster } from './cluster';
+
 export type Span = { start: number; end: number };
 /** A stretch where person `speaker` (0, 1, ...) is talking. Segments of different people may overlap. */
 export type SpeakerSegment = Span & { speaker: number };
@@ -134,4 +136,74 @@ export function smoothSpeakers(speakers: number[], words: Span[], maxFlip = 0.45
     if (out[i - 1] === out[i + 1] && out[i] !== out[i - 1] && words[i].end - words[i].start <= maxFlip) out[i] = out[i - 1];
   }
   return out;
+}
+
+/** Stretches where two or more local speakers talk at once (runs shorter than `min` seconds are blips). */
+export function overlapSpans(masks: number[], frameSeconds: number, t0: number, { min = 0.2, joinGap = 0.1 } = {}): Span[] {
+  const both = (m: number) => (m & (m - 1)) !== 0; // more than one bit set
+  const out: Span[] = [];
+  masks.forEach((m, f) => {
+    if (!both(m)) return;
+    const start = t0 + f * frameSeconds;
+    const last = out.at(-1);
+    if (last && start - last.end <= joinGap) last.end = start + frameSeconds;
+    else out.push({ start, end: start + frameSeconds });
+  });
+  return out.filter((o) => o.end - o.start >= min);
+}
+
+/** Which words are mostly (at least `share` of their time) spoken over by someone else. `overlaps` are in time order. */
+export function overlapFlags(words: Span[], overlaps: Span[], share = 0.5): boolean[] {
+  let from = 0;
+  return words.map((w) => {
+    while (from < overlaps.length && overlaps[from].end < w.start - 5) from++;
+    let over = 0;
+    for (let k = from; k < overlaps.length && overlaps[k].start < w.end; k++) over += Math.max(0, Math.min(overlaps[k].end, w.end) - Math.max(overlaps[k].start, w.start));
+    return over > 0 && over >= share * Math.max(w.end - w.start, 0.05);
+  });
+}
+
+/**
+ * What the voice step finds before anyone is named: one voice vector per (stretch, local speaker), when
+ * that speaker talks, and where people talk over each other. Kept so who-is-who can be redone at once.
+ */
+export type Voices = {
+  vectors: number[][];
+  /** Seconds of speech behind each vector. */
+  weights: number[];
+  /** When each vector's speaker talks. */
+  runs: Span[][];
+  overlaps: Span[];
+};
+
+export const noVoices = (): Voices => ({ vectors: [], weights: [], runs: [], overlaps: [] });
+
+/** The voices of one part of a recording, moved `dt` seconds later (parts are found separately, then joined). */
+export function shiftVoices(v: Voices, dt: number): Voices {
+  const move = (x: Span): Span => ({ start: x.start + dt, end: x.end + dt });
+  return { vectors: v.vectors, weights: v.weights, runs: v.runs.map((r) => r.map(move)), overlaps: v.overlaps.map(move) };
+}
+
+export const joinVoices = (parts: Voices[]): Voices => ({
+  vectors: parts.flatMap((p) => p.vectors),
+  weights: parts.flatMap((p) => p.weights),
+  runs: parts.flatMap((p) => p.runs),
+  overlaps: parts.flatMap((p) => p.overlaps).sort((a, b) => a.start - b.start),
+});
+
+/**
+ * "Separate more" to "Merge more": the distance under which two voices are one person, from the
+ * strictest (many people) to the loosest (few). The middle one is the default.
+ */
+export const SEPARATION_LEVELS = [0.2, 0.27, CLUSTER_THRESHOLD, 0.45, 0.55];
+export const DEFAULT_SEPARATION = 2;
+
+/** Who is who: group the voices into people (a fixed `count`, or found by `threshold`), as segments in time order. */
+export function labelVoices(v: Voices, { count, threshold = CLUSTER_THRESHOLD }: { count?: number; threshold?: number } = {}): { segments: SpeakerSegment[]; people: number } {
+  const labels = cluster(v.vectors, { count, threshold, minWeight: MIN_SPEAKER_SECONDS, weights: v.weights });
+  const segments: SpeakerSegment[] = [];
+  v.runs.forEach((runs, i) => runs.forEach((r) => segments.push({ ...r, speaker: labels[i] })));
+  segments.sort((x, y) => x.start - y.start);
+  firstToTalkIsZero(segments);
+  return { segments, people: labels.length ? Math.max(...labels) + 1 : 1 };
 }

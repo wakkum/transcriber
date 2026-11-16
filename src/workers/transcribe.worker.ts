@@ -5,7 +5,8 @@
 import './ort';
 import { pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
 import { REVISIONS } from '../engine/models';
-import { silenceThreshold, speechEnd, speechPieces } from '../engine/speech';
+import { doubtful } from '../engine/doubt';
+import { silenceThreshold, soundShare, speechEnd, speechPieces } from '../engine/speech';
 
 export type TranscribeRequest = {
   /** 16 kHz mono samples. */
@@ -18,7 +19,7 @@ export type TranscribeRequest = {
 
 type Chunk = { text: string; timestamp: [number, number | null] };
 
-export type RawWord = { text: string; start: number; end: number };
+export type RawWord = { text: string; start: number; end: number; doubt?: boolean };
 
 /** Ask the worker to finish the piece it is on and hand the audio back. */
 export type TranscribeControl = { type: 'stop' };
@@ -94,7 +95,8 @@ self.onmessage = async (e: MessageEvent<TranscribeRequest | TranscribeControl>) 
           // Whisper stretches a word's end over the pause after it: trim to where the sound stops
           return { text: c.text.trim(), start, end: speechEnd(audio, SR, start, Math.max(end, start + 0.02), silence) };
         });
-      post({ type: 'words', words, progress: to / duration });
+      const flags = doubtful(words, words.map((w) => soundShare(audio, SR, w.start, w.end, silence)));
+      post({ type: 'words', words: words.map((w, i) => (flags[i] ? { ...w, doubt: true } : w)), progress: to / duration });
     }
     post({ type: 'done', audio });
   } catch (err) {

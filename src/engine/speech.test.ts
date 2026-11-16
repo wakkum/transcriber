@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { silenceThreshold, snapToQuiet, speechEnd, speechPieces } from './speech';
+import { quietestPoint, silenceThreshold, snapToQuiet, speechEnd, speechPieces } from './speech';
 
 const SR = 1000; // 1 kHz keeps sample math readable
 
@@ -66,5 +66,18 @@ describe('speechPieces', () => {
     const pieces = speechPieces(loud, SR, 0.01, { maxLen: 0.5, pad: 0 });
     expect(pieces.length).toBeGreaterThan(3);
     expect(pieces.every(([a, b]) => b > a)).toBe(true);
+  });
+});
+
+describe('quietestPoint', () => {
+  it('finds the middle of the quietest stretch', () => {
+    const SR = 1000;
+    const x = Float32Array.from({ length: 5000 }, (_, i) => (i >= 2000 && i < 2800 ? 0 : 0.5 * Math.sin(i / 5)));
+    const at = quietestPoint(x, SR, 0.4);
+    expect(at).toBeGreaterThan(2000);
+    expect(at).toBeLessThan(2800);
+  });
+  it('copes with short input', () => {
+    expect(quietestPoint(new Float32Array(10), 1000)).toBe(5);
   });
 });

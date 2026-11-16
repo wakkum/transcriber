@@ -27,6 +27,20 @@ export function silenceThreshold(mono: Float32Array, sampleRate: number): number
   return Math.max(0.002, levels[Math.floor(levels.length * 0.1)] * 3);
 }
 
+/** The share (0 to 1) of [start, end] with sound in it (20 ms windows above `threshold`). A word over silence is a bad sign. */
+export function soundShare(mono: Float32Array, sampleRate: number, start: number, end: number, threshold: number): number {
+  const size = Math.round(0.02 * sampleRate);
+  const a = Math.round(start * sampleRate);
+  const b = Math.round(end * sampleRate);
+  let loud = 0;
+  let all = 0;
+  for (let i = a; i + size <= b; i += size) {
+    all++;
+    if (windowRms(mono, i, size) > threshold) loud++;
+  }
+  return all ? loud / all : 1; // too short to judge: not flagged for this
+}
+
 /**
  * Whisper often stretches a word's end over the pause after it. Return the time the
  * sound in [start, end] actually stops (plus a short tail), never earlier than start.
@@ -121,4 +135,18 @@ export function speechPieces(
   }
   if (start >= 0) close(Infinity);
   return out;
+}
+
+/** The quietest moment in `samples` (the middle of its quietest `window` seconds): where to cut a long recording in two. */
+export function quietestPoint(samples: Float32Array, sampleRate: number, window = 0.4): number {
+  const size = Math.max(1, Math.round(window * sampleRate));
+  if (samples.length <= size) return Math.floor(samples.length / 2);
+  const step = Math.max(1, Math.round(0.02 * sampleRate));
+  let best = 0;
+  let bestEnergy = Infinity;
+  for (let i = 0; i + size <= samples.length; i += step) {
+    const e = windowEnergy(samples, i, size);
+    if (e < bestEnergy) [best, bestEnergy] = [i, e];
+  }
+  return best + Math.floor(size / 2);
 }

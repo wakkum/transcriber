@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { words } from './fixtures';
-import { baseName, clock, isRtl, paragraphs, rowsOf, splitLines, timecode, transcriptTxt } from './transcript';
+import { baseName, clock, isRtl, markedText, paragraphs, rowsOf, splitLines, timecode, transcriptTxt } from './transcript';
 
 describe('paragraphs', () => {
   it('breaks after a long pause', () => {
@@ -49,5 +49,16 @@ describe('helpers', () => {
   it('strip extensions', () => {
     expect(baseName('Interview 3.final.mp4')).toBe('Interview 3.final');
     expect(baseName('.wav')).toBe('.wav');
+  });
+});
+
+describe('overlap marks in exports', () => {
+  it('wraps each run of overlapping words and leaves the rest alone', () => {
+    const w = (id: string, text: string, start: number, overlap?: boolean) => ({ id, text, start, end: start + 0.4, ...(overlap ? { overlap } : {}) });
+    const words = [w('a', 'So', 0), w('b', 'yes', 0.5, true), w('c', 'I', 1, true), w('d', 'know', 1.5), w('e', 'and', 2, true)];
+    expect(markedText(words)).toBe('So [overlap: yes I] know [overlap: and]');
+    const para = { start: 0, words };
+    expect(rowsOf(para, { timecodes: false, markOverlap: true })[0].text).toBe('So [overlap: yes I] know [overlap: and]');
+    expect(rowsOf(para, { timecodes: false })[0].text).toBe('So yes I know and');
   });
 });

@@ -3,7 +3,17 @@
 // docx.ts and pdf.ts; all three share these paragraphs and lines.
 
 /** A transcribed word with its start and end in the recording (seconds), and who said it once speakers are known. */
-export type Word = { id: string; text: string; start: number; end: number; speaker?: string };
+export type Word = {
+  id: string;
+  text: string;
+  start: number;
+  end: number;
+  speaker?: string;
+  /** Mostly spoken over by someone else (found with the speakers). */
+  overlap?: boolean;
+  /** Worth a second look: the sound or the timing makes the word doubtful (found while transcribing). */
+  doubt?: boolean;
+};
 export type Para = { start: number; speaker?: string; words: Word[] };
 /** One timecoded line of a paragraph. */
 export type TextLine = { start: number; end: number; text: string };
@@ -13,6 +23,8 @@ export type ExportOptions = {
   timecodes: boolean;
   /** Speaker names by id: when given, each paragraph starts with its speaker's name. */
   speakerNames?: Record<string, string>;
+  /** Wrap stretches spoken over by someone else in [overlap: ...]. */
+  markOverlap?: boolean;
 };
 
 /** The label to print over a paragraph, or null when speakers are not shown. */
@@ -64,8 +76,28 @@ export function lineGroups(words: Word[], { maxChars = 84, maxSeconds = 7, pause
 export const splitLines = (words: Word[]): TextLine[] => lineGroups(words).map((g) => ({ start: g[0].start, end: g.at(-1)!.end, text: textOf(g) }));
 
 /** A paragraph as rows for an export: one per line behind its timecode, or the whole text untimed. */
-export function rowsOf(p: Para, { timecodes }: ExportOptions): { time?: string; text: string }[] {
-  return timecodes ? splitLines(p.words).map((l) => ({ time: `[${timecode(l.start)}]`, text: l.text })) : [{ text: textOf(p.words) }];
+export function rowsOf(p: Para, { timecodes, markOverlap }: ExportOptions): { time?: string; text: string }[] {
+  const say = (ws: Word[]) => (markOverlap ? markedText(ws) : textOf(ws));
+  return timecodes ? lineGroups(p.words).map((g) => ({ time: `[${timecode(g[0].start)}]`, text: say(g) })) : [{ text: say(p.words) }];
+}
+
+/** The words as text, with each run of overlapping speech in [overlap: ...]. */
+export function markedText(words: Word[]): string {
+  const out: string[] = [];
+  let run: string[] = [];
+  const close = () => {
+    if (run.length) out.push(`[overlap: ${run.join(' ')}]`);
+    run = [];
+  };
+  for (const w of words) {
+    if (w.overlap) run.push(w.text);
+    else {
+      close();
+      out.push(w.text);
+    }
+  }
+  close();
+  return out.join(' ');
 }
 
 const pad = (n: number, w = 2) => String(Math.floor(n)).padStart(w, '0');

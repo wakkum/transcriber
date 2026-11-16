@@ -56,6 +56,45 @@ export class MonoResampler {
     if (n > 0) this.add(new Float32Array(n));
   }
 
+  /** Output samples held so far. */
+  get size() {
+    return this.length;
+  }
+
+  /** The last `n` samples held, copied (to look for a quiet moment to cut at). */
+  tail(n: number): Float32Array {
+    const out = new Float32Array(Math.min(n, this.length));
+    let at = out.length;
+    for (let i = this.chunks.length - 1; i >= 0 && at > 0; i--) {
+      const c = this.chunks[i];
+      const part = c.subarray(Math.max(0, c.length - at));
+      at -= part.length;
+      out.set(part, at);
+    }
+    return out;
+  }
+
+  /** Remove and return the first `n` samples held. */
+  take(n: number): Float32Array {
+    const out = new Float32Array(Math.min(n, this.length));
+    let at = 0;
+    while (at < out.length) {
+      const c = this.chunks[0];
+      const need = out.length - at;
+      if (c.length <= need) {
+        out.set(c, at);
+        at += c.length;
+        this.chunks.shift();
+      } else {
+        out.set(c.subarray(0, need), at);
+        this.chunks[0] = c.subarray(need);
+        at += need;
+      }
+    }
+    this.length -= out.length;
+    return out;
+  }
+
   /** Everything so far as one array, including a last partly filled sample. */
   finish(): Float32Array {
     if (this.weight > 1e-9) {
