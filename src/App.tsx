@@ -350,7 +350,13 @@ export default function App() {
       mono.current = null;
     }
     setDocs((ds) => ds.filter((x) => x.id !== id));
-    if (viewId === id) setViewId(null);
+    if (viewId === id) setViewId(neighbour(id));
+  }
+
+  /** The tab to show when `id` goes: the next one, or the one before if it was last; none (the start screen) if it was the only one. */
+  function neighbour(id: number): number | null {
+    const i = docs.findIndex((x) => x.id === id);
+    return (docs[i + 1] ?? docs[i - 1])?.id ?? null;
   }
 
   function retry(id: number) {
@@ -597,7 +603,7 @@ export default function App() {
     if (words.length) edit({ phase: 'done', stopping: false, notice: 'Stopped: the transcript has what was done so far.' });
     else {
       setDocs((ds) => ds.filter((x) => x.id !== viewId));
-      setViewId(null);
+      setViewId(neighbour(viewId));
     }
   }
 
