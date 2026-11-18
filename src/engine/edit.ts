@@ -72,3 +72,27 @@ export function toEndOfTurn(words: readonly Word[], ids: ReadonlySet<string>): s
   while (b < words.length - 1 && words[b + 1].speaker === words[last].speaker) b++;
   return words.slice(a, b + 1).map((w) => w.id);
 }
+
+/**
+ * Words typed in by hand for a stretch with no recognised speech: spread over [from, to] by their length,
+ * so clicking a word plays roughly the right place. A blank line starts a new paragraph (a pause longer
+ * than the one that splits paragraphs is left there).
+ */
+export function wordsFromText(text: string, from: number, to: number, newId: () => string, paragraphGap = 2): Word[] {
+  const blocks = text.split(/\n\s*\n/).map((b) => b.trim().split(/\s+/).filter(Boolean)).filter((b) => b.length);
+  const chars = blocks.flat().reduce((n, t) => n + t.length + 1, 0);
+  if (!chars) return [];
+  const gaps = (blocks.length - 1) * paragraphGap;
+  const speech = Math.max(to - from - gaps, 0.5 * chars * 0.05);
+  let at = from;
+  const out: Word[] = [];
+  blocks.forEach((block, b) => {
+    for (const t of block) {
+      const len = (speech * (t.length + 1)) / chars;
+      out.push({ id: newId(), text: t, start: at, end: at + len * 0.9 });
+      at += len;
+    }
+    if (b < blocks.length - 1) at += paragraphGap;
+  });
+  return out;
+}

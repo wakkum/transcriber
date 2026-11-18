@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deleteWords, replaceWords, textOf, toEndOfTurn, wholeSentences } from './edit';
+import { deleteWords, replaceWords, wordsFromText, textOf, toEndOfTurn, wholeSentences } from './edit';
 import type { Word } from './transcript';
 
 const w = (id: string, text: string, start: number, speaker?: string): Word => ({ id, text, start, end: start + 1, ...(speaker ? { speaker } : {}) });
@@ -45,5 +45,25 @@ describe('edit several words', () => {
     expect(toEndOfTurn(words, ids('d', 'e'))).toEqual(['d', 'e']);
     expect(toEndOfTurn(words, ids('a'))).toEqual(['a', 'b']);
     expect(toEndOfTurn(words, ids())).toEqual([]);
+  });
+});
+
+describe('typed-in text', () => {
+  it('spreads words over the time, in order, by length', () => {
+    let n = 0;
+    const r = wordsFromText('Good evening everyone', 0, 10, () => `t${n++}`);
+    expect(r.map((x) => x.text)).toEqual(['Good', 'evening', 'everyone']);
+    expect(r[0].start).toBe(0);
+    expect(r.at(-1)!.end).toBeLessThanOrEqual(10);
+    expect(r[1].start).toBeGreaterThan(r[0].end - 1e-9);
+    expect(r[2].end - r[2].start).toBeGreaterThan(r[0].end - r[0].start);
+  });
+  it('leaves a longer pause where a blank line is', () => {
+    const r = wordsFromText('One two\n\nThree four', 0, 20, () => 'x');
+    expect(r).toHaveLength(4);
+    expect(r[2].start - r[1].end).toBeGreaterThan(1.5);
+  });
+  it('gives nothing for empty text', () => {
+    expect(wordsFromText('  \n ', 0, 10, () => 'x')).toEqual([]);
   });
 });

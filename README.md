@@ -10,9 +10,9 @@ Get the app from the [latest release](https://github.com/wakkum/transcriber/rele
 
 | System | File |
 | --- | --- |
-| Mac, Apple Silicon (M1 or newer) | [Transcriber-0.2.3-mac-arm64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.3/Transcriber-0.2.3-mac-arm64.dmg) |
-| Mac, Intel | [Transcriber-0.2.3-mac-x64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.3/Transcriber-0.2.3-mac-x64.dmg) |
-| Windows (64-bit) | [Transcriber-0.2.3-win-x64.zip](https://github.com/wakkum/transcriber/releases/download/v0.2.3/Transcriber-0.2.3-win-x64.zip) |
+| Mac, Apple Silicon (M1 or newer) | [Transcriber-0.2.4-mac-arm64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.4/Transcriber-0.2.4-mac-arm64.dmg) |
+| Mac, Intel | [Transcriber-0.2.4-mac-x64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.4/Transcriber-0.2.4-mac-x64.dmg) |
+| Windows (64-bit) | [Transcriber-0.2.4-win-x64.zip](https://github.com/wakkum/transcriber/releases/download/v0.2.4/Transcriber-0.2.4-win-x64.zip) |
 
 About 205 MB for Mac and 235 MB for Windows, models included. The apps are not signed by Apple or Microsoft, so see below for the first open.
 
@@ -42,7 +42,8 @@ The Balanced English speech model (base.en) and the speaker models ship inside t
 - **Long files:** the sound is decoded and worked on in pieces of about half an hour (cut at the quietest moment), so a two-hour recording never sits in memory at once. Speakers are matched across the pieces by their voices. The status reads "Part 1 of about 3".
 - **Speaker grouping:** the Separation slider (shown once speakers are found) regroups the voices at once, with no models run: move it left if different people were merged, right if one person was split in two. Identify again with another count also regroups instantly (no models run). Stretches where people talk over each other are underlined with a wavy line and exported as `[overlap: ...]` (switch off with Mark talking over).
 - **Words to check:** words whose sound or timing looks doubtful (spoken over silence, too fast to say, or a loop of repeats) are underlined with red dots, and a button counts them and walks through them: it plays from just before the word and opens it for correcting; Enter keeps it. Whisper gives no certainty per word, so this is a hint, not a measure.
-- **Made-up text:** over music, noise or silence Whisper often writes things like "Thanks for watching!". Such text is left out and the notice says what was dropped: a known stock phrase over quiet or sparse sound, a stretch with every word over near silence, and a whole recording with only a few words in it (at most 6, fewer than one every 7 seconds), which is then reported as "No speech was found". Anything else doubtful is kept and underlined. Real speech can be wrongly dropped in rare cases (a single word in a long recording); the notice quotes the text so it can be typed back.
+- **How to use:** the button at the top right opens a short guide (transcribing, listening, fixing text and speakers, saving). Esc or a click outside closes it.
+- **Made-up text:** over music, noise or silence Whisper often writes things like "Thanks for watching!". Such text is left out and the notice says what was dropped: a known stock phrase over quiet or sparse sound, a stretch with every word over near silence, and a whole recording with only a few words in it (at most 6, fewer than one every 7 seconds), which is then reported as "No speech was found". Anything else doubtful is kept and underlined. Real speech can be wrongly dropped in rare cases (a single word in a long recording), so an empty transcript offers Put back the text Whisper wrote, and a box to type the transcript in by hand (spread evenly over the file's length, a blank line starting a new paragraph).
 - **Search and replace:** Replace... under the search box swaps whole words or phrases (punctuation next to them is kept), one at a time or all at once, undoable in one step.
 - **Search:** the box above the transcript (Ctrl or Cmd + F) finds words and phrases, ignoring case, accents and punctuation; Enter and Shift+Enter step through the matches.
 - **Playback:** clicking a word or timecode moves the player there; it keeps playing if it was playing, and stays paused if it was paused.
@@ -62,6 +63,7 @@ Two small models, both on the WASM engine (the segmentation model doesn't suppor
 | --- | --- |
 | `src/engine/search.ts`, `edit.ts`, `doubt.ts` | Finding and replacing text; deleting, retyping and widening selections of words; doubtful words |
 | `src/App.tsx` | The page: drop zone, file queue and settings, progress, player, export bar, edits and undo |
+| `src/ui/Help.tsx` | The "How to use" guide |
 | `src/ui/Transcript.tsx`, `SpeakerMenu.tsx` | Lines and words (click, drag-select, correct), speaker menu, selection bar |
 | `src/audio/decode.ts` | File to 16 kHz mono, in pieces of about half an hour: Mediabunny (WebCodecs) streaming, browser decoder as fallback |
 | `src/workers/transcribe.worker.ts`, `diarize.worker.ts` | Whisper and the speaker models via Transformers.js, off the main thread; `ort.ts` points ONNX Runtime at the copy bundled in the app (no CDN) |

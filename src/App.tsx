@@ -8,9 +8,10 @@ import { canWritePdf, pdfFile, type Measure } from './engine/pdf';
 import { addSpeaker, assignTo, fromIdentification, mergeSpeakers, namesOf, renameSpeaker, usedSpeakers, type Speaker } from './engine/speakers';
 import { baseName, clock, isRtl, lineGroups, paragraphs, transcriptTxt, type Para, type Word } from './engine/transcript';
 import { sparseRecording } from './engine/doubt';
-import { deleteWords, replaceWords, textOf, toEndOfTurn, wholeSentences } from './engine/edit';
+import { deleteWords, replaceWords, textOf, toEndOfTurn, wholeSentences, wordsFromText } from './engine/edit';
 import { findMatches, replaceAll, replaceMatch } from './engine/search';
 import { newerVersion, RELEASES_PAGE } from './engine/update';
+import { Help } from './ui/Help';
 import { SelectionBar, Transcript, type MenuState } from './ui/Transcript';
 import type { DiarizeControl, DiarizeMessage, DiarizeRequest } from './workers/diarize.worker';
 import type { TranscribeControl, TranscribeMessage, TranscribeRequest } from './workers/transcribe.worker';
@@ -78,6 +79,9 @@ let nextDoc = 0;
 /** The running work (one file at a time). `stopped`: the user pressed Stop and the worker is finishing its current piece. */
 type Job = { id: number; worker: Worker | null; abort: AbortController; stopped?: boolean };
 
+/** Text left out as made up: its words are kept so it can be put back. */
+type Left = { text: string; at: number; words: Word[] };
+
 /** What a file was added with: later changes to the settings do not affect files already waiting. */
 type Config = { model: ReturnType<typeof modelFor>; device: Settings['device']; speakers: SpeakerSetting };
 
@@ -102,6 +106,8 @@ type Doc = {
   voices: Voices | null;
   /** The Separation slider: an index into SEPARATION_LEVELS. */
   separation: number;
+  /** Words Whisper wrote that were left out as made up (they can be put back). */
+  left: Word[];
   /** Which piece of a long file is being worked on, of about how many. */
   part: number;
   parts: number;
@@ -125,6 +131,7 @@ const newDoc = (file: File | null, config: Config): Doc => ({
   stopping: false,
   voices: null,
   separation: DEFAULT_SEPARATION,
+  left: [],
   part: 0,
   parts: 1,
 });
@@ -155,6 +162,8 @@ export default function App() {
   const [over, setOver] = useState(false);
   const [query, setQuery] = useState('');
   const [hit, setHit] = useState(0);
+  const [help, setHelp] = useState(false);
+  const [manual, setManual] = useState('');
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [replacement, setReplacement] = useState('');
   const [markOverlap, setMarkOverlap] = useState(true);
@@ -184,7 +193,7 @@ export default function App() {
 
   const patch = (id: number, p: Partial<Doc>) => setDocs((ds) => ds.map((d) => (d.id === id ? { ...d, ...p } : d)));
   const cur = docs.find((d) => d.id === viewId) ?? null;
-  const { file, title, phase, stage, progress, error, words, speakers, history, duration, notice, device, stopping, part, parts } = cur ?? newDoc(null, { model, device: settings.device, speakers: settings.speakers });
+  const { file, title, phase, stage, progress, error, words, speakers, history, duration, notice, device, stopping, left, part, parts } = cur ?? newDoc(null, { model, device: settings.device, speakers: settings.speakers });
   const cfg = cur?.config ?? { model, device: settings.device, speakers: settings.speakers };
   /** Changes to the file on show. */
   const edit = (p: Partial<Doc>) => viewId != null && patch(viewId, p);
@@ -283,6 +292,7 @@ export default function App() {
     setEditing(null);
     setQuery('');
     setHit(0);
+    setManual('');
   }, [viewId]);
 
   // the match being looked at scrolls into view
@@ -365,7 +375,7 @@ export default function App() {
   }
 
   /** Run the two workers on one piece of audio at a time. Each resolves when its worker is done (the audio comes back with it). */
-  function makeWorkers(mine: Job, all: Word[], left: { text: string; at: number }[] = []) {
+  function makeWorkers(mine: Job, all: Word[], left: Left[] = []) {
     const p = (x: Partial<Doc>) => patch(mine.id, x);
     const gone = (resolve: () => void) => mine.abort.signal.addEventListener('abort', resolve, { once: true });
 
@@ -388,7 +398,7 @@ export default function App() {
           if (m.type === 'download') p({ progress: m.progress });
           if (m.type === 'ready') p({ device: m.device === 'webgpu' ? 'GPU' : 'standard engine', phase: 'transcribing', progress: overall(0) });
           if (m.type === 'words') {
-            if (m.dropped) left.push({ text: m.dropped.text, at: m.dropped.at + offset });
+            if (m.dropped) left.push({ text: m.dropped.text, at: m.dropped.at + offset, words: m.dropped.words.map((w) => ({ id: `w${nextId++}`, ...w, start: w.start + offset, end: w.end + offset, doubt: true })) });
             all.push(...m.words.map((w) => ({ id: `w${nextId++}`, ...w, start: w.start + offset, end: w.end + offset })));
             p({ words: [...all], progress: overall(m.progress) });
           }
@@ -447,7 +457,7 @@ export default function App() {
     const voices: Voices[] = [];
     const wantSpeakers = d.config.speakers !== 'off';
     const count = d.config.speakers === 'auto' || d.config.speakers === 'off' ? undefined : Number(d.config.speakers);
-    const invented: { text: string; at: number }[] = [];
+    const invented: Left[] = [];
     const { transcribe, diarize } = makeWorkers(mine, all, invented);
     const failedParts: number[] = [];
     let problem = '';
@@ -519,7 +529,7 @@ export default function App() {
     else if (sparseRecording(all.length, totalSeconds)) {
       // a few words in a long recording: Whisper making things up over sound with no speech
       const text = all.map((w) => w.text).join(' ');
-      invented.push({ text, at: all[0].start });
+      invented.push({ text, at: all[0].start, words: all.map((w) => ({ ...w, doubt: true })) });
       result = { words: [], speakers: [], voices: null, history: [] };
       notice = 'No speech was found in this file.';
     } else if (joined.vectors.length) {
@@ -528,7 +538,7 @@ export default function App() {
         // nothing in the file sounds like speech: what Whisper wrote is made up
         const text = all.map((w) => w.text).join(' ');
         result = { words: [], speakers: [], voices: joined, history: [] };
-        invented.push({ text: text.length > 60 ? `${text.slice(0, 60)}...` : text, at: all[0].start });
+        invented.push({ text: text.length > 60 ? `${text.slice(0, 60)}...` : text, at: all[0].start, words: all.map((w) => ({ ...w, doubt: true })) });
         notice = 'No speech was found in this file.';
       } else result = { words: r.words, speakers: r.speakers, voices: joined, separation: DEFAULT_SEPARATION, history: [] };
       // found automatically: say how many, since a wrong count is the likeliest mistake
@@ -540,7 +550,7 @@ export default function App() {
       notice = `${notice ? `${notice} ` : ''}Left out ${invented.length === 1 ? 'text' : `${invented.length} stretches of text`} that looked made up by Whisper over sound with no speech: ${shown}${invented.length > 3 ? ', and more' : ''}.`;
     }
     job.current = null;
-    p({ ...result, phase: 'done', stopping: false, notice });
+    p({ ...result, left: invented.flatMap((x) => x.words), phase: 'done', stopping: false, notice });
   }
 
   /** Name the people in `all` from the voices: grouping, each word's speaker, and the words spoken over. */
@@ -694,6 +704,22 @@ export default function App() {
     }
   }
 
+  /** Put the words that were left out as made up back in (they stay underlined as doubtful). */
+  function restoreLeft() {
+    if (!left.length) return;
+    const next = [...words, ...left].sort((a, b) => a.start - b.start);
+    edit({ history: [...history.slice(-99), { words, speakers }], words: next, left: [], notice: '' });
+  }
+
+  /** Type the transcript in by hand, spread over the length of the file. */
+  function addManual() {
+    const length = duration || media.current?.duration || 60;
+    const next = wordsFromText(manual, 0, length, () => `w${nextId++}`);
+    if (!next.length) return;
+    edit({ history: [], words: next, left: [], notice: 'Added by hand: the words are spread evenly over the file, so clicking one plays roughly the right place.' });
+    setManual('');
+  }
+
   /** Go to the next doubtful word: play from just before it and open it for correcting (Enter keeps it). */
   function checkNext() {
     const doubts = words.filter((w) => w.doubt);
@@ -787,12 +813,18 @@ export default function App() {
       <header className="top">
         <strong className="brand">Transcriber</strong>
         <span className="muted small">Audio and video to text, on this computer</span>
-        {viewId != null && (
-          <button className="ghost" onClick={() => setViewId(null)}>
-            Add files
+        <span className="actions">
+          {viewId != null && (
+            <button className="ghost" onClick={() => setViewId(null)}>
+              Add files
+            </button>
+          )}
+          <button className="ghost" onClick={() => setHelp(true)}>
+            How to use
           </button>
-        )}
+        </span>
       </header>
+      {help && <Help onClose={() => setHelp(false)} />}
 
       {docs.length > 0 && (
         <nav className="files" aria-label="Files">
@@ -1077,7 +1109,23 @@ export default function App() {
           )}
 
           <article className="transcript" dir={rtl ? 'rtl' : 'auto'}>
-            {phase === 'done' && !words.length && <p className="muted">No speech was found in this file.</p>}
+            {phase === 'done' && !words.length && (
+              <div className="manual">
+                <p className="muted">No speech was found in this file. You can type the transcript in yourself.</p>
+                {left.length > 0 && (
+                  <p>
+                    <button onClick={restoreLeft}>Put back the text Whisper wrote</button>
+                    <span className="muted small"> ({left.map((w) => w.text).join(' ').slice(0, 60)})</span>
+                  </p>
+                )}
+                <textarea value={manual} onChange={(e) => setManual(e.target.value)} rows={8} placeholder="Type or paste the transcript here. A blank line starts a new paragraph." aria-label="Transcript text" />
+                <p>
+                  <button className="primary" onClick={addManual} disabled={!manual.trim()}>
+                    Add as transcript
+                  </button>
+                </p>
+              </div>
+            )}
             <Transcript
               paras={paras}
               lines={lines}

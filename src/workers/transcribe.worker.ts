@@ -32,7 +32,7 @@ export type TranscribeMessage =
   | { type: 'download'; progress: number; loaded: number; total: number }
   | { type: 'ready'; device: string }
   /** `dropped`: the text of a stretch left out because it looked invented over non-speech sound. */
-  | { type: 'words'; words: RawWord[]; progress: number; dropped?: { text: string; at: number } }
+  | { type: 'words'; words: RawWord[]; progress: number; dropped?: { text: string; at: number; words: RawWord[] } }
   | { type: 'done'; audio: Float32Array }
   | { type: 'error'; message: string; audio?: Float32Array };
 
@@ -98,7 +98,7 @@ self.onmessage = async (e: MessageEvent<TranscribeRequest | TranscribeControl>) 
         });
       const sound = words.map((w) => soundShare(audio, SR, w.start, w.end, silence));
       if (inventedStretch(words, sound, to - from)) {
-        post({ type: 'words', words: [], progress: to / duration, dropped: { text: words.map((w) => w.text).join(' '), at: words[0].start } });
+        post({ type: 'words', words: [], progress: to / duration, dropped: { text: words.map((w) => w.text).join(' '), at: words[0].start, words } });
         continue;
       }
       const flags = doubtful(words, sound);

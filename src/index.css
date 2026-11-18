@@ -79,7 +79,7 @@ select { background: var(--panel); border: 1px solid var(--line); border-radius:
 
 .app { min-height: 100%; display: flex; flex-direction: column; }
 .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
-.top .ghost { margin-left: auto; }
+.top .actions { margin-left: auto; display: flex; gap: 8px; }
 .brand { font-size: 16px; }
 
 .empty { flex: 1; display: grid; place-items: center; padding: 24px 16px; }
@@ -180,3 +180,13 @@ button.link { border: 0; background: transparent; padding: 0; color: var(--accen
 .sep input[type=range] { width: 110px; }
 
 .drop-cover { pointer-events: none; }
+
+.help { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; padding: 20px 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--fg); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3); }
+.help::backdrop { background: rgba(0, 0, 0, 0.4); }
+.help-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.help h2 { margin: 0; font-size: 20px; }
+.help h3 { margin: 18px 0 6px; font-size: 15px; }
+.help ul { margin: 0; padding-left: 20px; line-height: 1.55; font-size: 14px; }
+.help li + li { margin-top: 4px; }
+
+.manual textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--fg); resize: vertical; }
