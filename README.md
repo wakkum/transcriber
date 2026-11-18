@@ -10,9 +10,9 @@ Get the app from the [latest release](https://github.com/wakkum/transcriber/rele
 
 | System | File |
 | --- | --- |
-| Mac, Apple Silicon (M1 or newer) | [Transcriber-0.2.0-mac-arm64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.0/Transcriber-0.2.0-mac-arm64.dmg) |
-| Mac, Intel | [Transcriber-0.2.0-mac-x64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.0/Transcriber-0.2.0-mac-x64.dmg) |
-| Windows (64-bit) | [Transcriber-0.2.0-win-x64.zip](https://github.com/wakkum/transcriber/releases/download/v0.2.0/Transcriber-0.2.0-win-x64.zip) |
+| Mac, Apple Silicon (M1 or newer) | [Transcriber-0.2.1-mac-arm64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.1/Transcriber-0.2.1-mac-arm64.dmg) |
+| Mac, Intel | [Transcriber-0.2.1-mac-x64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.1/Transcriber-0.2.1-mac-x64.dmg) |
+| Windows (64-bit) | [Transcriber-0.2.1-win-x64.zip](https://github.com/wakkum/transcriber/releases/download/v0.2.1/Transcriber-0.2.1-win-x64.zip) |
 
 About 205 MB for Mac and 235 MB for Windows, models included. The apps are not signed by Apple or Microsoft, so see below for the first open.
 

@@ -226,6 +226,46 @@ export default function App() {
     return () => removeEventListener('beforeunload', warn);
   }, [unsaved]);
 
+  // The "Drop to transcribe" cover shows while a file is dragged over the window. Leaving the window,
+  // dropping elsewhere or cancelling can all skip a dragleave, so it also goes away when the drag
+  // events stop coming (dragover repeats about every 50 to 350 ms while a drag is over the page).
+  useEffect(() => {
+    let timer = 0;
+    const hide = () => {
+      clearTimeout(timer);
+      setOver(false);
+    };
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files');
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setOver(true);
+      clearTimeout(timer);
+      timer = window.setTimeout(hide, 500);
+    };
+    const leave = (e: DragEvent) => {
+      if (e.relatedTarget === null) hide(); // the drag left the window
+    };
+    const keys = (e: KeyboardEvent) => e.key === 'Escape' && hide();
+    addEventListener('dragover', over);
+    addEventListener('dragleave', leave);
+    addEventListener('drop', hide);
+    addEventListener('dragend', hide);
+    addEventListener('pointerdown', hide);
+    addEventListener('blur', hide);
+    addEventListener('keydown', keys);
+    return () => {
+      hide();
+      removeEventListener('dragover', over);
+      removeEventListener('dragleave', leave);
+      removeEventListener('drop', hide);
+      removeEventListener('dragend', hide);
+      removeEventListener('pointerdown', hide);
+      removeEventListener('blur', hide);
+      removeEventListener('keydown', keys);
+    };
+  }, []);
+
   // the player for the file on show
   useEffect(() => {
     if (!file) return setMediaUrl('');
@@ -708,13 +748,6 @@ export default function App() {
   return (
     <div
       className="app"
-      onDragOver={(e) => {
-        e.preventDefault();
-        setOver(true);
-      }}
-      onDragLeave={(e) => {
-        if (e.currentTarget === e.target) setOver(false);
-      }}
       onDrop={(e) => {
         e.preventDefault();
         setOver(false);
