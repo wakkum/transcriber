@@ -35,3 +35,51 @@ export function doubtful(words: Timed[], sound: number[]): boolean[] {
   }
   return flags;
 }
+
+/** What Whisper tends to write over sound that is not speech (video endings, subtitle credits, bare fillers). */
+const INVENTED = [
+  'thanks for watching',
+  'thank you for watching',
+  'thank you so much for watching',
+  'thanks for watching and see you in the next video',
+  'please subscribe',
+  'like and subscribe',
+  'subscribe to my channel',
+  'see you in the next video',
+  'see you next time',
+  'bye',
+  'bye bye',
+  'thank you',
+  'thanks',
+  'you',
+  'subtitles by the amaraorg community',
+  'subtitled by the amaraorg community',
+  'transcribed by',
+  'music',
+  'applause',
+  // other languages it does the same in
+  'اشتركوا في القناة',
+  'ترجمة نانسي قنقر',
+  'شكرا للمشاهدة',
+  'merci davoir regarde cette video',
+  'sous titres realises par la communaute damaraorg',
+  'gracias por ver el video',
+  'subtitulos realizados por la comunidad de amaraorg',
+].map(normalize);
+
+/**
+ * Text Whisper made up over sound with no speech in it: a stretch whose words all sit over near silence,
+ * or a known stock phrase ("Thanks for watching") over quiet or very sparse sound. Left out of the transcript.
+ * `seconds` is the length of the stretch that was transcribed.
+ */
+export function inventedStretch(words: Timed[], sound: number[], seconds: number): boolean {
+  if (!words.length) return false;
+  if (sound.every((s) => s < MIN_SOUND_SHARE)) return true;
+  const text = words.map((w) => normalize(w.text)).join('');
+  const quiet = sound.reduce((a, b) => a + b, 0) / sound.length < 0.6;
+  const sparse = words.length / Math.max(seconds, 1) < 0.25;
+  return INVENTED.includes(text) && (quiet || sparse);
+}
+
+/** A whole recording with only a few words in it (at most 6, under one every 7 seconds): nearly always Whisper making things up over sound with no speech. */
+export const sparseRecording = (words: number, seconds: number) => words > 0 && words <= 6 && words / Math.max(seconds, 1) < 0.15;

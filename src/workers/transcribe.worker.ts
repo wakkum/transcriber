@@ -5,7 +5,7 @@
 import './ort';
 import { pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
 import { REVISIONS } from '../engine/models';
-import { doubtful } from '../engine/doubt';
+import { doubtful, inventedStretch } from '../engine/doubt';
 import { silenceThreshold, soundShare, speechEnd, speechPieces } from '../engine/speech';
 
 export type TranscribeRequest = {
@@ -31,7 +31,8 @@ export type TranscribeControl = { type: 'stop' };
 export type TranscribeMessage =
   | { type: 'download'; progress: number; loaded: number; total: number }
   | { type: 'ready'; device: string }
-  | { type: 'words'; words: RawWord[]; progress: number }
+  /** `dropped`: the text of a stretch left out because it looked invented over non-speech sound. */
+  | { type: 'words'; words: RawWord[]; progress: number; dropped?: { text: string; at: number } }
   | { type: 'done'; audio: Float32Array }
   | { type: 'error'; message: string; audio?: Float32Array };
 
@@ -95,7 +96,12 @@ self.onmessage = async (e: MessageEvent<TranscribeRequest | TranscribeControl>) 
           // Whisper stretches a word's end over the pause after it: trim to where the sound stops
           return { text: c.text.trim(), start, end: speechEnd(audio, SR, start, Math.max(end, start + 0.02), silence) };
         });
-      const flags = doubtful(words, words.map((w) => soundShare(audio, SR, w.start, w.end, silence)));
+      const sound = words.map((w) => soundShare(audio, SR, w.start, w.end, silence));
+      if (inventedStretch(words, sound, to - from)) {
+        post({ type: 'words', words: [], progress: to / duration, dropped: { text: words.map((w) => w.text).join(' '), at: words[0].start } });
+        continue;
+      }
+      const flags = doubtful(words, sound);
       post({ type: 'words', words: words.map((w, i) => (flags[i] ? { ...w, doubt: true } : w)), progress: to / duration });
     }
     post({ type: 'done', audio });

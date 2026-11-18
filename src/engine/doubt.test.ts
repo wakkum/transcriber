@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { doubtful } from './doubt';
+import { doubtful, inventedStretch, sparseRecording } from './doubt';
 
 const w = (text: string, start: number, dur = 0.4) => ({ text, start, end: start + dur });
 const ok = (n: number) => Array(n).fill(1);
@@ -27,5 +27,33 @@ describe('doubtful words', () => {
   it('does not call a few repeats a loop', () => {
     const words = ['no', 'no', 'no'].map((t, i) => w(t, i));
     expect(doubtful(words, ok(3))).toEqual([false, false, false]);
+  });
+});
+
+describe('invented stretches', () => {
+  const ws = (...t: string[]) => t.map((x, i) => w(x, i));
+  it('drops a stock phrase over quiet or sparse sound', () => {
+    expect(inventedStretch(ws('Thanks', 'for', 'watching!'), [0.5, 0.2, 0.1], 25)).toBe(true);
+    expect(inventedStretch(ws('Thanks', 'for', 'watching!'), [0.9, 0.9, 0.9], 25)).toBe(true); // 3 words in 25 s is sparse
+    expect(inventedStretch(ws('Thanks', 'for', 'watching!'), [0.9, 0.9, 0.9], 2)).toBe(false);
+  });
+  it('drops a stretch where every word is over near silence', () => {
+    expect(inventedStretch(ws('Something', 'odd'), [0.05, 0.1], 5)).toBe(true);
+  });
+  it('keeps real speech, including a spoken "thank you"', () => {
+    expect(inventedStretch(ws('Welcome', 'back', 'to', 'the', 'program'), [0.9, 0.8, 0.9, 0.9, 0.9], 3)).toBe(false);
+    expect(inventedStretch(ws('Thank', 'you.'), [0.9, 0.9], 2)).toBe(false);
+    expect(inventedStretch([], [], 5)).toBe(false);
+  });
+});
+
+describe('sparse recordings', () => {
+  it('calls a few words in a long file invented, but not a short clip or a real talk', () => {
+    expect(sparseRecording(2, 40)).toBe(true);
+    expect(sparseRecording(1, 5)).toBe(false);
+    expect(sparseRecording(1, 3)).toBe(false);
+    expect(sparseRecording(112, 39)).toBe(false);
+    expect(sparseRecording(8, 600)).toBe(false);
+    expect(sparseRecording(0, 40)).toBe(false);
   });
 });

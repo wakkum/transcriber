@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { decodePieces, PIECE_SECONDS, WHISPER_SAMPLE_RATE } from './audio/decode';
-import { assignWords, DEFAULT_SEPARATION, joinVoices, labelVoices, overlapFlags, SEPARATION_LEVELS, shiftVoices, smoothSpeakers, type Voices } from './engine/diarize';
+import { assignWords, DEFAULT_SEPARATION, joinVoices, labelVoices, overlapFlags, SEPARATION_LEVELS, shiftVoices, smoothSpeakers, speechShares, type Voices } from './engine/diarize';
 import { docxFile } from './engine/docx';
 import { printHtml } from './engine/html';
 import { BUNDLED_SPEECH_MODEL, LANGUAGES, modelFor, QUALITIES, type Quality } from './engine/models';
 import { canWritePdf, pdfFile, type Measure } from './engine/pdf';
 import { addSpeaker, assignTo, fromIdentification, mergeSpeakers, namesOf, renameSpeaker, usedSpeakers, type Speaker } from './engine/speakers';
 import { baseName, clock, isRtl, lineGroups, paragraphs, transcriptTxt, type Para, type Word } from './engine/transcript';
+import { sparseRecording } from './engine/doubt';
 import { deleteWords, replaceWords, textOf, toEndOfTurn, wholeSentences } from './engine/edit';
 import { findMatches, replaceAll, replaceMatch } from './engine/search';
 import { newerVersion, RELEASES_PAGE } from './engine/update';
@@ -364,7 +365,7 @@ export default function App() {
   }
 
   /** Run the two workers on one piece of audio at a time. Each resolves when its worker is done (the audio comes back with it). */
-  function makeWorkers(mine: Job, all: Word[]) {
+  function makeWorkers(mine: Job, all: Word[], left: { text: string; at: number }[] = []) {
     const p = (x: Partial<Doc>) => patch(mine.id, x);
     const gone = (resolve: () => void) => mine.abort.signal.addEventListener('abort', resolve, { once: true });
 
@@ -387,6 +388,7 @@ export default function App() {
           if (m.type === 'download') p({ progress: m.progress });
           if (m.type === 'ready') p({ device: m.device === 'webgpu' ? 'GPU' : 'standard engine', phase: 'transcribing', progress: overall(0) });
           if (m.type === 'words') {
+            if (m.dropped) left.push({ text: m.dropped.text, at: m.dropped.at + offset });
             all.push(...m.words.map((w) => ({ id: `w${nextId++}`, ...w, start: w.start + offset, end: w.end + offset })));
             p({ words: [...all], progress: overall(m.progress) });
           }
@@ -445,13 +447,15 @@ export default function App() {
     const voices: Voices[] = [];
     const wantSpeakers = d.config.speakers !== 'off';
     const count = d.config.speakers === 'auto' || d.config.speakers === 'off' ? undefined : Number(d.config.speakers);
-    const { transcribe, diarize } = makeWorkers(mine, all);
+    const invented: { text: string; at: number }[] = [];
+    const { transcribe, diarize } = makeWorkers(mine, all, invented);
     const failedParts: number[] = [];
     let problem = '';
     let kept: Float32Array | null = null;
     let stoppedEarly = false;
     let stoppedSpeakers = false;
     let decoding = true;
+    let totalSeconds = 0;
     p({ phase: 'decoding', progress: 0, error: '', notice: '', stopping: false, words: [], speakers: [], history: [], voices: null, part: 0, parts: 1 });
     const pieces = decodePieces(f, (v) => decoding && p({ progress: v }), abort.signal, length);
     const fail = (message: string) => {
@@ -473,6 +477,7 @@ export default function App() {
         const seconds = piece.audio.length / WHISPER_SAMPLE_RATE;
         const total = piece.total || piece.start + seconds;
         const overall = (frac: number) => Math.min(1, (piece.start + frac * seconds) / total);
+        totalSeconds = piece.start + seconds;
         p({ duration: piece.start + seconds, part: piece.index + 1, parts: Math.max(1, Math.ceil(total / length)) });
         const before = all.length;
         const t = await transcribe(piece.audio, piece.start, overall, d.config);
@@ -511,13 +516,29 @@ export default function App() {
     let result: Partial<Doc> = {};
     if (stoppedEarly) notice = `Stopped: the transcript has the part done so far.${kept ? ' Choose Identify speakers to find who spoke.' : ''}`;
     else if (stoppedSpeakers) notice = 'Stopped: the transcript has no speakers.';
-    else if (joined.vectors.length) {
+    else if (sparseRecording(all.length, totalSeconds)) {
+      // a few words in a long recording: Whisper making things up over sound with no speech
+      const text = all.map((w) => w.text).join(' ');
+      invented.push({ text, at: all[0].start });
+      result = { words: [], speakers: [], voices: null, history: [] };
+      notice = 'No speech was found in this file.';
+    } else if (joined.vectors.length) {
       const r = applyVoices(all, joined, count, DEFAULT_SEPARATION);
-      result = { words: r.words, speakers: r.speakers, voices: joined, separation: DEFAULT_SEPARATION, history: [] };
+      if (r.silent) {
+        // nothing in the file sounds like speech: what Whisper wrote is made up
+        const text = all.map((w) => w.text).join(' ');
+        result = { words: [], speakers: [], voices: joined, history: [] };
+        invented.push({ text: text.length > 60 ? `${text.slice(0, 60)}...` : text, at: all[0].start });
+        notice = 'No speech was found in this file.';
+      } else result = { words: r.words, speakers: r.speakers, voices: joined, separation: DEFAULT_SEPARATION, history: [] };
       // found automatically: say how many, since a wrong count is the likeliest mistake
-      if (!count) notice = `Found ${r.speakers.length === 1 ? 'one speaker' : `${r.speakers.length} speakers`}. If that's not right, pick the number in the Speakers box and choose Identify again, or move the Separation slider.`;
-      if (failedParts.length) notice += ` Speakers could not be found for part ${failedParts.join(', ')}.`;
+      if (!count && !r.silent) notice = `Found ${r.speakers.length === 1 ? 'one speaker' : `${r.speakers.length} speakers`}. If that's not right, pick the number in the Speakers box and choose Identify again, or move the Separation slider.`;
+      if (failedParts.length && !r.silent) notice += ` Speakers could not be found for part ${failedParts.join(', ')}.`;
     } else if (failedParts.length) notice = `${problem || 'Speaker identification failed.'} The transcript is complete without speakers.`;
+    if (invented.length) {
+      const shown = invented.slice(0, 3).map((x) => `"${x.text}" (${clock(x.at)})`).join(', ');
+      notice = `${notice ? `${notice} ` : ''}Left out ${invented.length === 1 ? 'text' : `${invented.length} stretches of text`} that looked made up by Whisper over sound with no speech: ${shown}${invented.length > 3 ? ', and more' : ''}.`;
+    }
     job.current = null;
     p({ ...result, phase: 'done', stopping: false, notice });
   }
@@ -529,7 +550,10 @@ export default function App() {
     const who = smoothSpeakers(assignWords(spans, segments), spans);
     const r = fromIdentification(all, who);
     const over = overlapFlags(spans, voices.overlaps);
-    return { words: r.words.map((w, i) => ({ ...w, overlap: over[i] || undefined })), speakers: r.speakers };
+    // words with no speech under them (music, noise) are probably made up; if that is every word, there is no speech
+    const heard = speechShares(spans, voices.speech).map((x) => x >= 0.15);
+    const silent = all.length > 0 && heard.every((h) => !h);
+    return { words: r.words.map((w, i) => ({ ...w, overlap: over[i] || undefined, ...(heard[i] ? {} : { doubt: true }) })), speakers: r.speakers, silent };
   }
 
   /** The audio of the file on show is still here (only a file of one piece, worked on last, keeps it). */

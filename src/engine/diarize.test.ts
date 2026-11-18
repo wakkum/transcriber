@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assignWords, DEFAULT_SEPARATION, embeddingFrames, firstToTalkIsZero, frameMasks, joinVoices, labelVoices, noVoices, overlapFlags, overlapSpans, planWindows, SEPARATION_LEVELS, shiftVoices, smoothSpeakers, speakerRuns, type SpeakerSegment } from './diarize';
+import { assignWords, DEFAULT_SEPARATION, embeddingFrames, firstToTalkIsZero, frameMasks, joinVoices, labelVoices, noVoices, overlapFlags, overlapSpans, speechShares, speechSpans, planWindows, SEPARATION_LEVELS, shiftVoices, smoothSpeakers, speakerRuns, type SpeakerSegment } from './diarize';
 
 /** n words of 0.4 s each, `gap` apart, from `at`. */
 const run = (n: number, at = 0, gap = 0.1) => Array.from({ length: n }, (_, i) => ({ start: at + i * (0.4 + gap), end: at + i * (0.4 + gap) + 0.4 }));
@@ -109,6 +109,7 @@ describe('voices', () => {
     weights: [5, 5, 5, 5],
     runs: [[{ start: 0, end: 2 }], [{ start: 4, end: 6 }], [{ start: 2, end: 4 }], [{ start: 6, end: 8 }]],
     overlaps: [],
+    speech: [],
   };
   it('groups voices into people, the first to talk being 0', () => {
     const r = labelVoices(voices, { count: 2 });
@@ -127,5 +128,20 @@ describe('voices', () => {
     const joined = joinVoices([voices, a]);
     expect(joined.vectors).toHaveLength(8);
     expect(joinVoices([noVoices(), noVoices()]).vectors).toEqual([]);
+  });
+});
+
+describe('speech', () => {
+  it('finds where anyone talks and how much of each word is over it', () => {
+    const spans = speechSpans([0, 1, 1, 0, 0, 2, 3, 0], 0.1, 0);
+    expect(spans).toHaveLength(2);
+    expect(spans[0].start).toBeCloseTo(0.1);
+    expect(spans[0].end).toBeCloseTo(0.3);
+    expect(spans[1].start).toBeCloseTo(0.5);
+    expect(spans[1].end).toBeCloseTo(0.7);
+    const shares = speechShares([{ start: 0.1, end: 0.3 }, { start: 0.3, end: 0.5 }, { start: 0.4, end: 0.8 }], spans);
+    expect(shares[0]).toBeCloseTo(1);
+    expect(shares[1]).toBeCloseTo(0);
+    expect(shares[2]).toBeCloseTo(0.5);
   });
 });

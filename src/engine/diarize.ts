@@ -152,6 +152,30 @@ export function overlapSpans(masks: number[], frameSeconds: number, t0: number, 
   return out.filter((o) => o.end - o.start >= min);
 }
 
+/** Stretches where the model hears someone talking at all (any local speaker). */
+export function speechSpans(masks: number[], frameSeconds: number, t0: number, joinGap = 0.1): Span[] {
+  const out: Span[] = [];
+  masks.forEach((m, f) => {
+    if (!m) return;
+    const start = t0 + f * frameSeconds;
+    const last = out.at(-1);
+    if (last && start - last.end <= joinGap) last.end = start + frameSeconds;
+    else out.push({ start, end: start + frameSeconds });
+  });
+  return out;
+}
+
+/** For each word, the share (0 to 1) of its time that falls in `speech` (in time order). Words over music or noise get about 0. */
+export function speechShares(words: Span[], speech: Span[]): number[] {
+  let from = 0;
+  return words.map((w) => {
+    while (from < speech.length && speech[from].end < w.start - 5) from++;
+    let heard = 0;
+    for (let k = from; k < speech.length && speech[k].start < w.end; k++) heard += Math.max(0, Math.min(speech[k].end, w.end) - Math.max(speech[k].start, w.start));
+    return Math.min(1, heard / Math.max(w.end - w.start, 0.05));
+  });
+}
+
 /** Which words are mostly (at least `share` of their time) spoken over by someone else. `overlaps` are in time order. */
 export function overlapFlags(words: Span[], overlaps: Span[], share = 0.5): boolean[] {
   let from = 0;
@@ -174,14 +198,16 @@ export type Voices = {
   /** When each vector's speaker talks. */
   runs: Span[][];
   overlaps: Span[];
+  /** Where anyone talks, as heard by the segmentation model: words outside it are probably not speech. */
+  speech: Span[];
 };
 
-export const noVoices = (): Voices => ({ vectors: [], weights: [], runs: [], overlaps: [] });
+export const noVoices = (): Voices => ({ vectors: [], weights: [], runs: [], overlaps: [], speech: [] });
 
 /** The voices of one part of a recording, moved `dt` seconds later (parts are found separately, then joined). */
 export function shiftVoices(v: Voices, dt: number): Voices {
   const move = (x: Span): Span => ({ start: x.start + dt, end: x.end + dt });
-  return { vectors: v.vectors, weights: v.weights, runs: v.runs.map((r) => r.map(move)), overlaps: v.overlaps.map(move) };
+  return { vectors: v.vectors, weights: v.weights, runs: v.runs.map((r) => r.map(move)), overlaps: v.overlaps.map(move), speech: v.speech.map(move) };
 }
 
 export const joinVoices = (parts: Voices[]): Voices => ({
@@ -189,6 +215,7 @@ export const joinVoices = (parts: Voices[]): Voices => ({
   weights: parts.flatMap((p) => p.weights),
   runs: parts.flatMap((p) => p.runs),
   overlaps: parts.flatMap((p) => p.overlaps).sort((a, b) => a.start - b.start),
+  speech: parts.flatMap((p) => p.speech).sort((a, b) => a.start - b.start),
 });
 
 /**

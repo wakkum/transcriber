@@ -4,7 +4,7 @@
 import './ort';
 import { AutoModel, AutoModelForAudioFrameClassification, AutoProcessor } from '@huggingface/transformers';
 import { EMBEDDING_MODEL, REVISIONS, SEGMENTATION_MODEL } from '../engine/models';
-import { embeddingFrames, frameMasks, overlapSpans, planWindows, speakerRuns, type Span, type Voices } from '../engine/diarize';
+import { embeddingFrames, frameMasks, overlapSpans, planWindows, speakerRuns, speechSpans, type Span, type Voices } from '../engine/diarize';
 
 export type DiarizeRequest = {
   /** 16 kHz mono samples. */
@@ -54,6 +54,7 @@ self.onmessage = async (e: MessageEvent<DiarizeRequest | DiarizeControl>) => {
     const weights: number[] = [];
     const runsOf: Span[][] = []; // per vector: when that local speaker talks
     const overlaps: Span[] = [];
+    const speech: Span[] = [];
 
     for (let w = 0; w < windows.length; w++) {
       if (stopRequested) return post({ type: 'stopped', audio });
@@ -67,6 +68,7 @@ self.onmessage = async (e: MessageEvent<DiarizeRequest | DiarizeControl>) => {
         const masks = frameMasks((logits.tolist() as number[][][])[0]);
         const frameSeconds = chunk.length / SR / masks.length;
         overlaps.push(...overlapSpans(masks, frameSeconds, windows[w].start));
+        speech.push(...speechSpans(masks, frameSeconds, windows[w].start));
 
         for (let s = 0; s < 3; s++) {
           const frames = embeddingFrames(masks, s, frameSeconds);
@@ -93,7 +95,7 @@ self.onmessage = async (e: MessageEvent<DiarizeRequest | DiarizeControl>) => {
       post({ type: 'progress', progress: (w + 1) / windows.length });
     }
 
-    post({ type: 'result', voices: { vectors, weights, runs: runsOf, overlaps }, audio });
+    post({ type: 'result', voices: { vectors, weights, runs: runsOf, overlaps, speech }, audio });
   } catch (err) {
     post({ type: 'error', message: err instanceof Error ? err.message : String(err), audio });
   }
