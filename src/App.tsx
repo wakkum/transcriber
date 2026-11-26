@@ -11,18 +11,20 @@ import { sparseRecording } from './engine/doubt';
 import { deleteWords, replaceWords, textOf, toEndOfTurn, wholeSentences, wordsFromText } from './engine/edit';
 import { findMatches, replaceAll, replaceMatch } from './engine/search';
 import { newerVersion, RELEASES_PAGE } from './engine/update';
+import { codeFor, current, paraKey, paraText, toTranslate, TRANSLATORS, translatorFor, type Translation } from './engine/translate';
 import { Help } from './ui/Help';
 import { SelectionBar, Transcript, type MenuState } from './ui/Transcript';
 import type { DiarizeControl, DiarizeMessage, DiarizeRequest } from './workers/diarize.worker';
+import type { TranslateMessage, TranslateRequest } from './workers/translate.worker';
 import type { TranscribeControl, TranscribeMessage, TranscribeRequest } from './workers/transcribe.worker';
 
 type Phase = 'idle' | 'queued' | 'decoding' | 'model' | 'transcribing' | 'speakers' | 'done' | 'error';
 /** How many people to look for: found automatically, a number, or not at all. */
 type SpeakerSetting = 'auto' | 'off' | '2' | '3' | '4' | '5' | '6' | '7' | '8';
-type Settings = { language: string; quality: Quality; device: 'wasm' | 'webgpu'; speakers: SpeakerSetting; updates: boolean };
+type Settings = { language: string; quality: Quality; device: 'wasm' | 'webgpu'; speakers: SpeakerSetting; updates: boolean; /** Language to translate into ('' until chosen) and which translation model. */ target: string; translator: 'standard' | 'better' };
 type Snapshot = { words: Word[]; speakers: Speaker[] };
 
-const DEFAULTS: Settings = { language: 'english', quality: 'balanced', device: 'wasm', speakers: 'auto', updates: true };
+const DEFAULTS: Settings = { language: 'english', quality: 'balanced', device: 'wasm', speakers: 'auto', updates: true, target: '', translator: 'standard' };
 declare const __APP_VERSION__: string;
 /** Only the desktop app is something to update: a browser always loads the current build. */
 const IS_APP = location.protocol === 'app:';
@@ -111,6 +113,8 @@ type Doc = {
   /** Which piece of a long file is being worked on, of about how many. */
   part: number;
   parts: number;
+  /** The paragraphs translated so far, if any. */
+  translation: Translation | null;
 };
 
 const newDoc = (file: File | null, config: Config): Doc => ({
@@ -132,6 +136,7 @@ const newDoc = (file: File | null, config: Config): Doc => ({
   voices: null,
   separation: DEFAULT_SEPARATION,
   left: [],
+  translation: null,
   part: 0,
   parts: 1,
 });
@@ -200,10 +205,22 @@ export default function App() {
   const setNotice = (notice: string) => edit({ notice });
   const setTitle = (title: string) => edit({ title });
 
+  /** Translating: which file, how far, and the worker (one translation at a time). */
+  const [translating, setTranslating] = useState<{ id: number; progress: number; stage: 'download' | 'work' } | null>(null);
+  const translateWorker = useRef<Worker | null>(null);
+  const stopTranslating = () => {
+    translateWorker.current?.terminate();
+    translateWorker.current = null;
+    setTranslating(null);
+  };
+
   const busy = working(phase);
   const anyWork = docs.some((d) => working(d.phase));
   const isVideo = !!file && (file.type.startsWith('video/') || VIDEO.test(file.name));
-  const paras = useMemo(() => paragraphs(words), [words]);
+  // Models with sentence times (Bengali) rarely punctuate, so a paragraph would only end at a pause or
+  // 150 words: keep them shorter, so a paragraph and its translation stay side by side on screen.
+  const sentenceTimes = !!cfg.model.segmentTimes;
+  const paras = useMemo(() => paragraphs(words, sentenceTimes ? { softMax: 25, hardMax: 60 } : {}), [words, sentenceTimes]);
   const lines = useMemo(() => paras.map((p) => lineGroups(p.words)), [paras]);
   const rtl = useMemo(() => isRtl(words.slice(0, 400).map((w) => w.text).join(' ')), [words]);
   const showSpeakers = speakers.length >= 2;
@@ -211,6 +228,7 @@ export default function App() {
   const selection = useMemo(() => new Set(selected), [selected]);
   selectionRef.current = selected;
   const matches = useMemo(() => findMatches(words, query, replaceOpen), [words, query, replaceOpen]);
+  const translated = useMemo(() => current(paras, cur?.translation), [paras, cur?.translation]);
   const doubtful = useMemo(() => words.filter((w) => w.doubt).length, [words]);
   const talkedOver = useMemo(() => words.some((w) => w.overlap), [words]);
   const at = matches.length ? Math.min(hit, matches.length - 1) : 0;
@@ -408,7 +426,7 @@ export default function App() {
             end({ audio: m.audio ?? null, error: /failed to fetch|networkerror|load failed/i.test(m.message) ? 'The speech model could not be downloaded. Check the internet connection and try again: the parts already downloaded are kept.' : `Transcription failed: ${m.message}` });
           }
         };
-        const req: TranscribeRequest = { audio, model: config.model.id, device: config.device, ...(config.model.language ? { language: config.model.language } : {}) };
+        const req: TranscribeRequest = { audio, model: config.model.id, device: config.device, ...(config.model.language ? { language: config.model.language } : {}), ...(config.model.dtype ? { dtype: config.model.dtype } : {}), ...(config.model.segmentTimes ? { segmentTimes: true } : {}), ...(config.model.pieceSeconds ? { pieceSeconds: config.model.pieceSeconds } : {}) };
         worker.postMessage(req, [audio.buffer]);
       });
 
@@ -763,14 +781,55 @@ export default function App() {
   const subtitle = () =>
     `Transcript of ${file?.name ?? 'a recording'} · ${clock(duration)} · ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}`;
 
+  /** Translate the paragraphs that have no translation yet (all of them after a change of language or model). */
+  function translate() {
+    if (!cur || translating) return;
+    const id = cur.id;
+    const t = translatorFor(settings.translator);
+    const source = cur.config.model.language ?? 'english';
+    const from = codeFor(t, source);
+    const to = codeFor(t, settings.target);
+    if (!settings.target || !from || !to) return setNotice('Choose the language to translate into.');
+    if (source === settings.target) return setNotice('The transcript is already in that language.');
+    const same = cur.translation?.target === settings.target && cur.translation.translator === t.id;
+    const base: Translation = same ? cur.translation! : { target: settings.target, translator: t.id, items: {} };
+    const todo = toTranslate(paras, base);
+    if (!todo.length) return setNotice('Every paragraph is already translated.');
+    patch(id, { translation: base, notice: '' });
+    setTranslating({ id, progress: 0, stage: 'download' });
+    const worker = new Worker(new URL('./workers/translate.worker.ts', import.meta.url), { type: 'module' });
+    translateWorker.current = worker;
+    const end = (notice = '') => {
+      worker.terminate();
+      if (translateWorker.current === worker) translateWorker.current = null;
+      setTranslating(null);
+      if (notice) patch(id, { notice });
+    };
+    worker.onerror = () => end('Translation could not start: the translation worker failed to load. Reload the page and try again.');
+    worker.onmessage = (e: MessageEvent<TranslateMessage>) => {
+      const m = e.data;
+      if (m.type === 'download') setTranslating({ id, progress: m.progress, stage: 'download' });
+      if (m.type === 'ready') setTranslating({ id, progress: 0, stage: 'work' });
+      if (m.type === 'item') {
+        const p = todo[m.index];
+        setDocs((ds) => ds.map((d) => (d.id === id && d.translation ? { ...d, translation: { ...d.translation, items: { ...d.translation.items, [paraKey(p)]: { source: paraText(p), text: m.text } } } } : d)));
+        setTranslating({ id, progress: m.progress, stage: 'work' });
+      }
+      if (m.type === 'done') end();
+      if (m.type === 'error') end(/failed to fetch|networkerror|load failed/i.test(m.message) ? 'The translation model could not be downloaded. Check the internet connection and try again: the parts already downloaded are kept.' : `Translation failed: ${m.message}`);
+    };
+    const req: TranslateRequest = { model: t.model, texts: todo.map(paraText), from, to };
+    worker.postMessage(req);
+  }
+
   function exportAs(kind: 'docx' | 'txt' | 'pdf') {
-    const opts = { timecodes, rtl, markOverlap: markOverlap && talkedOver, ...(showSpeakers ? { speakerNames: namesOf(speakers) } : {}) };
+    const opts = { timecodes, rtl, markOverlap: markOverlap && talkedOver, ...(Object.keys(translated).length ? { translations: translated } : {}), ...(showSpeakers ? { speakerNames: namesOf(speakers) } : {}) };
     const t = title.trim() || 'Transcript';
     const sub = subtitle();
     if (kind === 'docx') download(docxFile(t, sub, paras, opts) as BlobPart, `${name}.docx`, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     if (kind === 'txt') download(transcriptTxt(t, sub, paras, opts), `${name}.txt`, 'text/plain;charset=utf-8');
     if (kind === 'pdf') {
-      const everything = `${t} ${sub} ${words.map((w) => w.text).join(' ')} ${showSpeakers ? speakers.map((s) => s.name).join(' ') : ''}`;
+      const everything = `${t} ${sub} ${words.map((w) => w.text).join(' ')} ${showSpeakers ? speakers.map((s) => s.name).join(' ') : ''} ${Object.values(translated).join(' ')}`;
       if (canWritePdf(everything)) download(pdfFile(t, sub, paras, opts, measure) as BlobPart, `${name}.pdf`, 'application/pdf');
       else {
         setNotice('This text needs fonts the direct PDF lacks, so the print window opens: choose "Save as PDF" there.');
@@ -912,7 +971,8 @@ export default function App() {
                 <select value={settings.quality} onChange={(e) => setSettings({ quality: e.target.value as Quality })}>
                   {QUALITIES.map((q) => (
                     <option key={q.id} value={q.id}>
-                      {q.label} ({included(modelFor(settings.language, q.id).id) ? 'included' : modelFor(settings.language, q.id).size})
+                      {q.label}
+                      {modelFor(settings.language, q.id).note ? `: ${modelFor(settings.language, q.id).note}` : ''} ({included(modelFor(settings.language, q.id).id) ? 'included' : modelFor(settings.language, q.id).size})
                     </option>
                   ))}
                 </select>
@@ -1012,6 +1072,37 @@ export default function App() {
               <button onClick={() => exportAs('docx')}>Word</button>
               <button onClick={() => exportAs('pdf')}>PDF</button>
               <button onClick={() => exportAs('txt')}>Text</button>
+              <div className="break" />
+              <label className="check small">
+                Translate to
+                <select value={settings.target} onChange={(e) => setSettings({ target: e.target.value })} disabled={!!translating}>
+                  <option value="">Choose a language</option>
+                  {LANGUAGES.filter((l) => l.id !== (cfg.model.language ?? 'english')).map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="check small" title="Standard is MIT-licensed. Better (NLLB-200) is more accurate but its licence allows non-commercial use only.">
+                <select value={settings.translator} onChange={(e) => setSettings({ translator: e.target.value as Settings['translator'] })} disabled={!!translating} aria-label="Translation model">
+                  {TRANSLATORS.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}: {t.note} ({t.size})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {translating?.id === viewId ? (
+                <>
+                  <span className="muted small">{translating.stage === 'download' ? `Loading the translation model (${translatorFor(settings.translator).size}, once) ${Math.round(translating.progress * 100)}%` : `Translating ${Math.round(translating.progress * 100)}%`}</span>
+                  <button onClick={stopTranslating}>Stop</button>
+                </>
+              ) : (
+                <button onClick={translate} disabled={!!translating || !settings.target}>
+                  {Object.keys(translated).length && cur?.translation?.target === settings.target && cur.translation.translator === settings.translator ? (toTranslate(paras, cur.translation).length ? 'Translate again' : 'Translated') : 'Translate'}
+                </button>
+              )}
               <div className="break" />
               <label className="check small">
                 Speakers
@@ -1129,6 +1220,8 @@ export default function App() {
             <Transcript
               paras={paras}
               lines={lines}
+              translations={translated}
+              rtlOf={isRtl}
               speakers={speakers}
               showSpeakers={showSpeakers}
               now={now}

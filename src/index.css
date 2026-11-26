@@ -110,6 +110,11 @@ select { background: var(--panel); border: 1px solid var(--line); border-radius:
 .transcript { line-height: 1.65; }
 .para { margin: 0 0 14px; }
 .line { display: flex; gap: 12px; margin: 0; padding: 1px 6px; border-radius: 6px; }
+.tr { margin: 2px 6px 0; padding: 6px 10px; border-inline-start: 3px solid var(--line); color: var(--muted); font-style: italic; }
+/* a paragraph and its translation side by side, the translation level with the paragraph's first line */
+.para.two { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: start; }
+.para.two .tr { margin: 0; padding: 1px 0 1px 12px; line-height: 1.6; }
+.para.two .tr.none { font-size: 13px; opacity: 0.7; }
 .line.now { background: var(--now); }
 .tc { flex: none; border: 0; background: transparent; padding: 0; color: var(--muted); font-size: 13px; line-height: inherit; direction: ltr; }
 .tc:hover { color: var(--accent); }
@@ -140,6 +145,8 @@ button.link { border: 0; background: transparent; padding: 0; color: var(--accen
 .selbar { position: fixed; z-index: 15; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2); }
 .selbar .whowrap { margin: 0; }
 @media (max-width: 600px) {
+  .para.two { grid-template-columns: 1fr; gap: 4px; }
+  .para.two .tr { padding: 4px 0 4px 12px; }
   .line { gap: 8px; }
   .export .grow { display: none; }
 }

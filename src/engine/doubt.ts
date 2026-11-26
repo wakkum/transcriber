@@ -9,9 +9,14 @@ export type Timed = { text: string; start: number; end: number };
 export const MIN_SOUND_SHARE = 0.3;
 const MAX_CHARS_PER_SECOND = 70;
 
-/** `sound[i]` is the share of word i's time with sound in it (see `soundShare`). */
-export function doubtful(words: Timed[], sound: number[]): boolean[] {
+/**
+ * `sound[i]` is the share of word i's time with sound in it (see `soundShare`). With `timing: false`
+ * (words that only share their sentence's time, spread by length) only loops are flagged: a word's
+ * own time is a guess then, so silence under it or its speed says nothing.
+ */
+export function doubtful(words: Timed[], sound: number[], { timing = true } = {}): boolean[] {
   const flags = words.map((w, i) => {
+    if (!timing) return false;
     const chars = normalize(w.text).length;
     const dur = w.end - w.start;
     if (sound[i] < MIN_SOUND_SHARE) return true;
@@ -83,3 +88,21 @@ export function inventedStretch(words: Timed[], sound: number[], seconds: number
 
 /** A whole recording with only a few words in it (at most 6, under one every 7 seconds): nearly always Whisper making things up over sound with no speech. */
 export const sparseRecording = (words: number, seconds: number) => words > 0 && words <= 6 && words / Math.max(seconds, 1) < 0.15;
+
+/**
+ * Whisper stuck in a loop: the same few letters 8 times running ("সাাাা...", "এমামামা...") or the same
+ * word or short phrase 5 times running. It then never gets to the rest of the piece, so the piece is
+ * redone in halves (or left out when it is only a short sound).
+ */
+export function looping(text: string): boolean {
+  if (/(\S{1,4}?)\1{7,}/u.test(text)) return true;
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  for (let n = 1; n <= 4; n++) {
+    for (let i = 0; i + 5 * n <= words.length; i++) {
+      let k = 1;
+      while (k < 5 && words.slice(i, i + n).every((x, j) => x === words[i + k * n + j])) k++;
+      if (k === 5) return true;
+    }
+  }
+  return false;
+}

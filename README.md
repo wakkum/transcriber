@@ -10,9 +10,9 @@ Get the app from the [latest release](https://github.com/wakkum/transcriber/rele
 
 | System | File |
 | --- | --- |
-| Mac, Apple Silicon (M1 or newer) | [Transcriber-0.2.4-mac-arm64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.4/Transcriber-0.2.4-mac-arm64.dmg) |
-| Mac, Intel | [Transcriber-0.2.4-mac-x64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.2.4/Transcriber-0.2.4-mac-x64.dmg) |
-| Windows (64-bit) | [Transcriber-0.2.4-win-x64.zip](https://github.com/wakkum/transcriber/releases/download/v0.2.4/Transcriber-0.2.4-win-x64.zip) |
+| Mac, Apple Silicon (M1 or newer) | [Transcriber-0.3.0-mac-arm64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.3.0/Transcriber-0.3.0-mac-arm64.dmg) |
+| Mac, Intel | [Transcriber-0.3.0-mac-x64.dmg](https://github.com/wakkum/transcriber/releases/download/v0.3.0/Transcriber-0.3.0-mac-x64.dmg) |
+| Windows (64-bit) | [Transcriber-0.3.0-win-x64.zip](https://github.com/wakkum/transcriber/releases/download/v0.3.0/Transcriber-0.3.0-win-x64.zip) |
 
 About 205 MB for Mac and 235 MB for Windows, models included. The apps are not signed by Apple or Microsoft, so see below for the first open.
 
@@ -23,7 +23,7 @@ About 205 MB for Mac and 235 MB for Windows, models included. The apps are not s
 - **Mac:** `Transcriber-<version>-mac-arm64.dmg` (Apple Silicon: M1 or newer) or `...-mac-x64.dmg` (Intel). Drag Transcriber to Applications. It is not signed by Apple, so the first time: right-click the app, choose Open, then Open again.
 - **Windows:** unzip `Transcriber-<version>-win-x64.zip` and double-click `Transcriber.exe`. Windows may show "Windows protected your PC": choose More info, then Run anyway.
 
-The Balanced English speech model (base.en) and the speaker models ship inside the app, so English transcription with speakers works with the internet off from the first launch. Other languages and qualities (speech 40 to 250 MB) download once on first use and are then kept in the app's own storage on that computer.
+The Balanced English speech model (base.en) and the speaker models ship inside the app, so English transcription with speakers works with the internet off from the first launch. Other languages and qualities (speech 40 MB to 1.1 GB) and the translation models (630 to 900 MB) download once on first use and are then kept in the app's own storage on that computer.
 
 **From the source** (to change it): `npm install`, then `npm run app` (the desktop window), `npm start` (in a browser) or `npm run dev`. Needs [Node.js](https://nodejs.org) 22.12 or newer; `start.command` (Mac) and `start.bat` (Windows) do the same as `npm start`.
 
@@ -32,7 +32,8 @@ The Balanced English speech model (base.en) and the speaker models ship inside t
 ## What it does
 
 - **Files:** audio (MP3, WAV, M4A, AAC, FLAC, Ogg, Opus) and video (MP4, MOV, WebM, MKV and more). Only the sound track is decoded, a chunk at a time, so long videos don't fill memory (about 9 seconds per hour of video). Files the stream decoder can't read go through the browser's own decoder.
-- **Languages:** English uses the English-only Whisper models; 24 other languages (Arabic, French, Spanish, Turkish, Urdu, ...) use the multilingual ones. Quality: Fastest (tiny), Balanced (base), Most accurate (small). GPU (WebGPU) is optional and experimental.
+- **Languages:** English uses the English-only Whisper models; 25 other languages (Arabic, Bengali, French, Spanish, Turkish, Urdu, ...) use the multilingual ones. Quality: Fastest (tiny), Balanced (base), Most accurate (small). Bengali is different because stock Whisper below large writes it in the wrong script or not at all: Fastest is a small model trained on Bengali (~290 MB, can skip words); Balanced and Most accurate are Bengali.AI's competition-winning medium model trained further on regional dialects (~1.1 GB, standard spelling, about 3 times the length of the audio on an M1). Bengali is sent in 10-second pieces, gives sentence-level timing instead of per-word timing, and for translation Better (NLLB) reads it clearly better than Standard. GPU (WebGPU) is optional and experimental.
+- **Translation:** under the Export bar, pick a language and press Translate: each paragraph is translated offline and shown under its original and in the Word, PDF and text exports. Standard is M2M100 (~630 MB, MIT); Better is NLLB-200 (~900 MB, more accurate, but its licence is CC-BY-NC: non-commercial use only). The models download once on first use. Edit the transcript afterwards and Translate again redoes only the changed paragraphs. Speech is always transcribed in its own language first, then translated from that text, so any transcription mistakes carry into the translation.
 - **Speakers:** found after transcribing, with a count of 2 to 8 if you know it (more reliable than automatic for similar voices), or not at all. A new paragraph starts whenever the speaker changes.
   - Click a speaker's name to rename them (everywhere, and in the exports), give that paragraph to someone else or a new speaker, or merge them into another speaker.
   - Drag across words, or click one and Shift-click another, then use the bar at the bottom to give those words to a speaker. This splits a paragraph.
@@ -67,7 +68,7 @@ Two small models, both on the WASM engine (the segmentation model doesn't suppor
 | `src/ui/Transcript.tsx`, `SpeakerMenu.tsx` | Lines and words (click, drag-select, correct), speaker menu, selection bar |
 | `src/audio/decode.ts` | File to 16 kHz mono, in pieces of about half an hour: Mediabunny (WebCodecs) streaming, browser decoder as fallback |
 | `src/workers/transcribe.worker.ts`, `diarize.worker.ts` | Whisper and the speaker models via Transformers.js, off the main thread; `ort.ts` points ONNX Runtime at the copy bundled in the app (no CDN) |
-| `src/engine/` | The rest, pure TypeScript tested with Vitest: `resample`, `speech`, `transcript`, `speakers` (names, assign, merge), `diarize` (windows, voices, overlap, word assignment), `cluster`, `update` (the new-version check), `docx` + `zip`, `pdf`, `html`, `models` |
+| `src/engine/` | The rest, pure TypeScript tested with Vitest: `resample`, `speech`, `transcript`, `speakers` (names, assign, merge), `diarize` (windows, voices, overlap, word assignment), `cluster`, `update` (the new-version check), `docx` + `zip`, `pdf`, `html`, `models`, `translate`, `segments` |
 | `electron/main.cjs` | The desktop window: serves `dist/` from its own `app://` address, blocks permissions and outside navigation |
 
 `npm run check` runs the type check, oxlint and the tests.
@@ -93,6 +94,8 @@ The code is MIT licensed (see `LICENSE`). The app bundles and downloads these mo
 
 - Whisper (OpenAI), as ONNX conversions by Xenova: Apache-2.0.
 - pyannote segmentation 3.0 (pyannote.audio), ONNX conversion by onnx-community: MIT.
+- Bengali speech: a Whisper small fine-tune by shamim1122 (Apache-2.0); Bengali.AI's tugstugi Whisper medium, fine-tuned further on regional speech by OmiKhan, as ONNX by subtitleking (Apache-2.0).
+- Translation: M2M100 418M (Meta), ONNX conversion by Xenova: MIT. NLLB-200 distilled 600M (Meta), ONNX conversion by Xenova: CC-BY-NC-4.0, non-commercial use only.
 - WeSpeaker ResNet34-LM speaker embeddings (WeSpeaker, trained on VoxCeleb), ONNX conversion by onnx-community: CC-BY-4.0. Credit to the WeSpeaker authors.
 
 Built with Transformers.js, ONNX Runtime Web, Mediabunny, Electron, React and Vite.

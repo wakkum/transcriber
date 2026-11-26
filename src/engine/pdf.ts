@@ -2,7 +2,7 @@
 // embedded and the file stays small. Built-in fonts only cover Western European text (WinAnsi), so
 // `canWritePdf` says when a transcript needs the browser's print dialog instead (Arabic, Cyrillic, ...).
 // Text widths come from `measure`, injected, since the engine has no DOM.
-import { rowsOf, speakerLabel, type ExportOptions, type Para } from './transcript';
+import { rowsOf, speakerLabel, translationOf, type ExportOptions, type Para } from './transcript';
 
 /** Width of `text` in points at `size` points. */
 export type Measure = (text: string, size: number, bold: boolean) => number;
@@ -107,6 +107,15 @@ export function layoutPages(title: string, subtitle: string, paras: Para[], opts
         if (i === 0 && row.time) put(M.x, row.time, BODY, false, 0.5);
         put(M.x + indent, text, BODY);
       });
+    }
+    const tr = translationOf(p, opts);
+    if (tr) {
+      // the translation under the paragraph, in grey
+      for (const text of wrap(tr, width - indent, BODY, measure)) {
+        room(LEAD);
+        y -= LEAD;
+        put(M.x + indent, text, BODY, false, 0.35);
+      }
     }
     y -= 9; // space between paragraphs
   }

@@ -57,3 +57,29 @@ describe('sparse recordings', () => {
     expect(sparseRecording(0, 40)).toBe(false);
   });
 });
+
+describe('looping', () => {
+  it('spots Whisper stuck on a letter group, a word or a phrase', async () => {
+    const { looping } = await import('./doubt');
+    expect(looping('সাাাাাাাাাাাাাাাাাাাাাাাাা')).toBe(true);
+    expect(looping('এমামামামামামামামামামামাম')).toBe(true);
+    expect(looping('কিন্তু রাশে আসচে আসচে আসচে আসচে আসচে আসচে')).toBe(true);
+    expect(looping('পান্তে পান্তে পান্তে পান্তে পান্তে')).toBe(true);
+    expect(looping('I said you know I said you know I said you know I said you know I said you know')).toBe(true);
+  });
+  it('leaves real speech alone, repeats included', () => {
+    return import('./doubt').then(({ looping }) => {
+      expect(looping('আর কি সু বিশে হাচ্ছে আমি এদেশে আস্ছে, রাস্যাতে আস্ছে এখন বর্তমানে উক্লেনে আস্ছে')).toBe(false);
+      expect(looping('no no no, I mean yes yes')).toBe(false);
+      expect(looping('Mississippi bookkeeper 2000000 hahaha')).toBe(false);
+      expect(looping('')).toBe(false);
+    });
+  });
+});
+
+describe('doubt with sentence-level times', () => {
+  it('flags only loops, not silence or speed, when word times are a guess', () => {
+    const words = [w('আমি', 0, 0.01), w('দেশে', 1), w('আসছি', 2), w('আসছি', 3), w('আসছি', 4), w('আসছি', 5)];
+    expect(doubtful(words, [0, 0, 1, 1, 1, 1], { timing: false })).toEqual([false, false, false, false, true, true]);
+  });
+});

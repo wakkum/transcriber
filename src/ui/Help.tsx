@@ -36,6 +36,14 @@ const STEPS: { title: string; items: string[] }[] = [
     ],
   },
   {
+    title: 'Translate',
+    items: [
+      'Under the title, pick a language next to Translate to, then press Translate. Each paragraph gets its translation beside it, and the exports include it.',
+      'Standard is free to use for anything. Better is more accurate but its licence allows non-commercial use only. Either downloads once (630 to 900 MB), then works offline.',
+      'Translations are a guide to the meaning, not a finished text: mistakes in the transcript carry into them. Edit the transcript and press Translate again to redo only the changed paragraphs.',
+    ],
+  },
+  {
     title: 'Save it',
     items: [
       'Export as Word, PDF or text with the buttons above the transcript. You can edit the title and switch timecodes on or off.',

@@ -1,7 +1,7 @@
 // The transcript as a Word document (.docx): title, subtitle, then each paragraph with every line on
 // its own row behind a grey timecode, in a minimal package of five XML parts zipped by zip.ts.
 // Right-to-left transcripts (Arabic, Hebrew) get right-to-left paragraphs.
-import { rowsOf, speakerLabel, type ExportOptions, type Para } from './transcript';
+import { isRtl, rowsOf, speakerLabel, translationOf, type ExportOptions, type Para } from './transcript';
 import { zipStored } from './zip';
 
 /** Text for XML: escaped, and without the control characters XML can't hold. */
@@ -43,7 +43,12 @@ export function documentXml(title: string, subtitle: string, paras: Para[], opts
     ...paras.map((p) => {
       const who = speakerLabel(p, opts);
       // the speaker in bold on its own row, then each line
-      return para((who ? run(who, true) + br : '') + rowsOf(p, opts).map((r) => (r.time ? timeRun(`${r.time} `) : '') + run(r.text)).join(br));
+      const tr = translationOf(p, opts);
+      const main = para((who ? run(who, true) + br : '') + rowsOf(p, opts).map((r) => (r.time ? timeRun(`${r.time} `) : '') + run(r.text)).join(br));
+      // the translation follows in grey italics, laid out in its own language's direction
+      const back = isRtl(tr ?? '');
+      const trPara = tr ? `<w:p><w:pPr>${back ? '<w:bidi/>' : ''}</w:pPr><w:r><w:rPr><w:i/><w:color w:val="595959"/>${back ? '<w:rtl/>' : ''}</w:rPr><w:t xml:space="preserve">${xml(tr)}</w:t></w:r></w:p>` : '';
+      return main + trPara;
     }),
   ].join('');
   return `${HEAD}<w:document ${W}><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>`;

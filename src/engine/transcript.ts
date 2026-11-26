@@ -25,13 +25,19 @@ export type ExportOptions = {
   speakerNames?: Record<string, string>;
   /** Wrap stretches spoken over by someone else in [overlap: ...]. */
   markOverlap?: boolean;
+  /** Translated paragraphs by paragraph key (its first word's id): each is added under its paragraph. */
+  translations?: Record<string, string>;
 };
+
+/** The translation to print under a paragraph, if there is one. */
+export const translationOf = (p: Para, { translations }: ExportOptions): string | undefined => translations?.[p.words[0].id];
 
 /** The label to print over a paragraph, or null when speakers are not shown. */
 export const speakerLabel = (p: Para, { speakerNames }: ExportOptions): string | null => (speakerNames && p.speaker != null ? (speakerNames[p.speaker] ?? '') || null : null);
 
 const textOf = (words: { text: string }[]) => words.map((w) => w.text).join(' ');
-export const endsSentence = (t: string) => /[.?!。؟]["')\]»”]?$/u.test(t);
+/** Full stops of several scripts, the Bengali and Devanagari danda (।) included. */
+export const endsSentence = (t: string) => /[.?!。؟।॥]["')\]»”]?$/u.test(t);
 
 /**
  * Words in paragraphs: a new one when the speaker changes, after a long pause, or at a sentence end once a paragraph is long.
@@ -117,7 +123,8 @@ export function transcriptTxt(title: string, subtitle: string, paras: Para[], op
   const out = [title, subtitle, ''];
   for (const p of paras) {
     const who = speakerLabel(p, opts);
-    out.push(...(who ? [who] : []), ...rowsOf(p, opts).map((r) => (r.time ? `${r.time} ${r.text}` : r.text)), '');
+    const tr = translationOf(p, opts);
+    out.push(...(who ? [who] : []), ...rowsOf(p, opts).map((r) => (r.time ? `${r.time} ${r.text}` : r.text)), ...(tr ? [tr] : []), '');
   }
   return `${out.join('\n').trimEnd()}\n`;
 }

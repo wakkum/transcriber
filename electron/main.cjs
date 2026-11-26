@@ -35,6 +35,9 @@ function serve() {
       // the policy as a header too: unlike the page's tag it also applies to the workers
       const headers = new Headers(res.headers);
       headers.set('Content-Security-Policy', csp);
+      // cross-origin isolation lets the speech engine use several threads (several times faster)
+      headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+      headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
       return new Response(res.body, { status: res.status, headers });
     });
   });

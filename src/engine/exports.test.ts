@@ -93,6 +93,11 @@ describe('models', () => {
   it('uses English-only models for English and multilingual ones otherwise', () => {
     expect(modelFor('english', 'balanced')).toEqual({ id: 'Xenova/whisper-base.en', size: '~80 MB' });
     expect(modelFor('arabic', 'accurate')).toEqual({ id: 'Xenova/whisper-small', size: '~250 MB', language: 'arabic' });
+    expect(modelFor('bengali', 'fast')).toMatchObject({ id: 'shamim1122/whisper-small-bangla-onnx', language: 'bengali', pieceSeconds: 10 });
+    expect(modelFor('bengali', 'balanced')).toMatchObject({ id: 'subtitleking/omikhan-bangla-whisper-medium-onnx', language: 'bengali', pieceSeconds: 10 });
+    expect(modelFor('bengali', 'accurate')).toMatchObject({ id: 'subtitleking/omikhan-bangla-whisper-medium-onnx', language: 'bengali', pieceSeconds: 10 });
+    // Bengali takes about 20 tokens a second: a 28 s piece would not fit Whisper's 448
+    expect(modelFor('french', 'accurate').pieceSeconds).toBeUndefined();
   });
 });
 
@@ -121,5 +126,17 @@ describe('speakers in exports', () => {
     const ids = [SEGMENTATION_MODEL, EMBEDDING_MODEL, ...LANGUAGES.flatMap((l) => QUALITIES.map((q) => modelFor(l.id, q.id).id))];
     for (const id of ids) expect(REVISIONS[id], id).toMatch(/^[0-9a-f]{40}$/);
     expect(modelFor('klingon', 'fast')).toEqual(modelFor('english', 'fast'));
+  });
+});
+
+describe('translations under paragraphs', () => {
+  const translations = { [paras[0].words[0].id]: 'আমি ভালো <আছি>.' };
+  const opts = { timecodes: false, translations };
+  it('adds the translation after its paragraph in every format', () => {
+    expect(transcriptTxt('T', 'S', paras, opts)).toContain('Hello <there> & you.\nআমি ভালো <আছি>.\n');
+    expect(documentXml('T', 'S', paras, opts)).toContain('আমি ভালো &lt;আছি&gt;.');
+    expect(printHtml('T', 'S', paras, opts)).toContain('<p class="tr" dir="ltr">আমি ভালো &lt;আছি&gt;.</p>');
+    expect(layoutPages('T', 'S', paras, opts, measure).flat().some((o) => o.text.includes('ভালো'))).toBe(true);
+    expect(transcriptTxt('T', 'S', paras, { timecodes: false })).not.toContain('ভালো');
   });
 });

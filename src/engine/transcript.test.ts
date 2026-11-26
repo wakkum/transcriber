@@ -61,4 +61,10 @@ describe('overlap marks in exports', () => {
     expect(rowsOf(para, { timecodes: false, markOverlap: true })[0].text).toBe('So [overlap: yes I] know [overlap: and]');
     expect(rowsOf(para, { timecodes: false })[0].text).toBe('So yes I know and');
   });
+
+  it('ends sentences at a Bengali danda', () => {
+    const ws = 'আমি দেশে আসছি। রাশিয়াতে আসছি এখন বর্তমানে ইউক্রেনে আসছি।'.split(' ').map((text, i) => ({ id: `b${i}`, text, start: i * 0.4, end: i * 0.4 + 0.3 }));
+    expect(splitLines(ws).map((l) => l.text)).toEqual(['আমি দেশে আসছি। রাশিয়াতে আসছি এখন বর্তমানে ইউক্রেনে আসছি।']);
+    expect(paragraphs(ws, { softMax: 3, pause: 9 }).map((p) => p.words.length)).toEqual([3, 6]);
+  });
 });
